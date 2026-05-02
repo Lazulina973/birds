@@ -1568,8 +1568,8 @@ async function runAnalysis() {
   form.append('week',     '-1');
   try {
     let res;
-    try { res = await fetch('http://localhost:5000/analyze', { method:'POST', body:form }); }
-    catch { throw new Error('BirdNET server not running — start it with: ~/bird_env/bin/python ~/bird_web.py'); }
+    try { res = await fetch('https://lazulina-birds-api.hf.space/analyze', { method:'POST', body:form }); }
+    catch { throw new Error('Analysis failed — the BirdNET server may be waking up, please try again in a moment.'); }
     const data = await res.json();
     if (!res.ok || data.error) throw new Error(data.error || 'Analysis failed');
     displayResults(data.detections);
