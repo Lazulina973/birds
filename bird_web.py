@@ -9,6 +9,10 @@ app = Flask(__name__)
 CORS(app)
 analyzer = Analyzer()
 
+@app.route('/')
+def index():
+    return 'BIRDS!!!! BirdNET API is running. POST audio to /analyze'
+
 @app.route('/analyze', methods=['POST'])
 def analyze():
     audio = request.files.get('audio')
