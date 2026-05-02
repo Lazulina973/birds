@@ -1,0 +1,1663 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>BIRDS!!!!</title>
+  <script src="https://cdn.jsdelivr.net/npm/@tensorflow/tfjs@4.22.0/dist/tf.min.js"></script>
+  <script src="https://cdn.jsdelivr.net/npm/@tensorflow-models/mobilenet@2.1.0/dist/mobilenet.min.js"></script>
+  <style>
+    *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0 }
+
+    :root {
+      --bg:            #eef5ee;
+      --surface:       #ffffff;
+      --surface-2:     #f4faf4;
+      --primary:       #2d6a4f;
+      --primary-dark:  #1b4332;
+      --primary-light: #52b788;
+      --accent:        #b7e4c7;
+      --text:          #1a2e1a;
+      --text-muted:    #4f6b4f;
+      --border:        #c3dcc3;
+      --radius:        12px;
+      --radius-sm:     8px;
+      --shadow-sm:     0 1px 4px rgba(0,0,0,.07);
+      --shadow:        0 4px 16px rgba(0,0,0,.09);
+      --transition:    .18s ease;
+    }
+
+    body {
+      font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', system-ui, sans-serif;
+      background: var(--bg);
+      color: var(--text);
+      min-height: 100vh;
+      line-height: 1.5;
+      padding-bottom: 90px; /* room for the now-playing bar */
+    }
+
+    /* ── Header ──────────────────────────────────────────── */
+    header {
+      background: linear-gradient(135deg, var(--primary-dark) 0%, var(--primary) 100%);
+      color: #fff;
+      text-align: center;
+      padding: 2rem 1rem 0;
+    }
+    header .icon { font-size: 2.6rem; display: block; margin-bottom: .35rem }
+    header h1   { font-size: 1.65rem; font-weight: 700; letter-spacing: -.02em }
+    header p    { opacity: .7; margin-top: .25rem; font-size: .85rem }
+
+    /* ── Tabs ─────────────────────────────────────────────── */
+    .tabs {
+      display: flex;
+      justify-content: center;
+      gap: .25rem;
+      padding: 1.2rem 1rem 0;
+    }
+    .tab-btn {
+      padding: .55rem 1.5rem;
+      border: none;
+      border-radius: 100px 100px 0 0;
+      background: rgba(255,255,255,.15);
+      color: rgba(255,255,255,.7);
+      font-size: .9rem;
+      font-weight: 600;
+      cursor: pointer;
+      transition: all var(--transition);
+      font-family: inherit;
+    }
+    .tab-btn:hover  { background: rgba(255,255,255,.25); color: #fff }
+    .tab-btn.active { background: var(--bg); color: var(--primary-dark) }
+
+    /* ── Main container ──────────────────────────────────── */
+    main { max-width: 820px; margin: 0 auto; padding: 1.75rem 1rem 2rem }
+
+    .tab-panel { display: none }
+    .tab-panel.active { display: block }
+
+    /* ── Card base ────────────────────────────────────────── */
+    .card {
+      background: var(--surface);
+      border: 1px solid var(--border);
+      border-radius: var(--radius);
+      box-shadow: var(--shadow-sm);
+    }
+
+    /* ════════════════════════════════════════════════════════
+       BROWSE TAB
+    ════════════════════════════════════════════════════════ */
+
+    /* ── Search input ─────────────────────────────────────── */
+    .search-wrap {
+      display: flex;
+      gap: .6rem;
+      margin-bottom: 1.25rem;
+    }
+    .search-input {
+      flex: 1;
+      padding: .85rem 1.1rem;
+      border: 2px solid var(--border);
+      border-radius: var(--radius);
+      background: var(--surface);
+      color: var(--text);
+      font-size: 1rem;
+      font-family: inherit;
+      transition: border-color var(--transition), box-shadow var(--transition);
+    }
+    .search-input:focus {
+      outline: none;
+      border-color: var(--primary-light);
+      box-shadow: 0 0 0 3px rgba(82,183,136,.18);
+    }
+    .search-input::placeholder { color: var(--text-muted) }
+    .btn-search {
+      padding: .85rem 1.25rem;
+      background: var(--primary);
+      color: #fff;
+      border: none;
+      border-radius: var(--radius);
+      font-size: 1.1rem;
+      cursor: pointer;
+      transition: all var(--transition);
+      box-shadow: 0 3px 10px rgba(45,106,79,.25);
+    }
+    .btn-search:hover { background: var(--primary-dark); transform: translateY(-1px) }
+
+    /* ── Search results ───────────────────────────────────── */
+    .search-meta {
+      font-size: .82rem;
+      color: var(--text-muted);
+      margin-bottom: .75rem;
+      min-height: 1.2em;
+    }
+    .search-empty {
+      text-align: center;
+      padding: 3rem 1rem;
+      color: var(--text-muted);
+    }
+    .search-empty .big { font-size: 2.5rem; margin-bottom: .6rem }
+    .search-empty h3 { font-size: 1rem; margin-bottom: .3rem; color: var(--text) }
+
+    .xc-list { display: flex; flex-direction: column; gap: .5rem }
+
+    .xc-card {
+      background: var(--surface);
+      border: 1px solid var(--border);
+      border-radius: var(--radius);
+      box-shadow: var(--shadow-sm);
+      display: grid;
+      grid-template-columns: auto 1fr auto;
+      align-items: center;
+      gap: .75rem 1rem;
+      padding: .9rem 1.1rem;
+      cursor: pointer;
+      transition: all var(--transition);
+    }
+    .xc-card:hover { box-shadow: var(--shadow); transform: translateY(-1px) }
+    .xc-card.playing {
+      border-color: var(--primary-light);
+      background: #f0faf4;
+      box-shadow: 0 0 0 2px rgba(82,183,136,.3);
+    }
+
+    .play-btn {
+      width: 42px; height: 42px;
+      border-radius: 50%;
+      border: 2px solid var(--primary-light);
+      background: var(--surface-2);
+      color: var(--primary);
+      font-size: 1rem;
+      cursor: pointer;
+      display: flex; align-items: center; justify-content: center;
+      flex-shrink: 0;
+      transition: all var(--transition);
+    }
+    .xc-card:hover .play-btn,
+    .xc-card.playing .play-btn {
+      background: var(--primary);
+      color: #fff;
+      border-color: var(--primary);
+    }
+
+    .xc-info { min-width: 0 }
+    .xc-common { font-weight: 700; font-size: .95rem; white-space: nowrap; overflow: hidden; text-overflow: ellipsis }
+    .xc-sci    { font-style: italic; font-size: .78rem; color: var(--text-muted) }
+    .xc-meta   { font-size: .72rem; color: var(--text-muted); margin-top: .15rem }
+
+    .xc-badges { display: flex; flex-direction: column; align-items: flex-end; gap: .3rem; flex-shrink: 0 }
+    .badge {
+      font-size: .7rem;
+      font-weight: 700;
+      padding: .15rem .5rem;
+      border-radius: 100px;
+      white-space: nowrap;
+    }
+    .badge-A { background: #d8f3e8; color: #1b7a44 }
+    .badge-B { background: #d1ecf1; color: #0c5460 }
+    .badge-C { background: #fff3cd; color: #856404 }
+    .badge-D { background: #fde8e8; color: #842029 }
+    .badge-song { background: var(--accent); color: var(--primary-dark) }
+    .badge-call { background: #e8f4fd; color: #1a6699 }
+    .badge-other { background: #f5f5f5; color: #555 }
+
+    /* ── Now-playing bar ──────────────────────────────────── */
+    .now-playing {
+      position: fixed;
+      bottom: 0; left: 0; right: 0;
+      background: var(--primary-dark);
+      color: #fff;
+      padding: .75rem 1.25rem;
+      display: none;
+      align-items: center;
+      gap: 1rem;
+      z-index: 100;
+      box-shadow: 0 -4px 20px rgba(0,0,0,.2);
+    }
+    .now-playing.visible { display: flex }
+    .np-icon { font-size: 1.4rem; flex-shrink: 0 }
+    .np-info { flex: 1; min-width: 0 }
+    .np-name { font-weight: 700; font-size: .9rem; white-space: nowrap; overflow: hidden; text-overflow: ellipsis }
+    .np-sub  { font-size: .75rem; opacity: .65 }
+    .np-controls { display: flex; align-items: center; gap: .75rem; flex-shrink: 0 }
+    .np-btn {
+      width: 36px; height: 36px;
+      border-radius: 50%;
+      border: none;
+      background: rgba(255,255,255,.15);
+      color: #fff;
+      font-size: .95rem;
+      cursor: pointer;
+      display: flex; align-items: center; justify-content: center;
+      transition: background var(--transition);
+    }
+    .np-btn:hover { background: rgba(255,255,255,.3) }
+    .np-progress-wrap {
+      flex: 1; max-width: 220px;
+      display: flex; align-items: center; gap: .5rem;
+    }
+    .np-time { font-size: .72rem; opacity: .7; min-width: 2.5rem; font-variant-numeric: tabular-nums }
+    .np-bar-bg {
+      flex: 1; height: 4px;
+      background: rgba(255,255,255,.2);
+      border-radius: 2px;
+      cursor: pointer;
+      overflow: hidden;
+    }
+    .np-bar-fill {
+      height: 100%;
+      background: var(--primary-light);
+      border-radius: 2px;
+      width: 0;
+      transition: width .1s linear;
+      pointer-events: none;
+    }
+    .np-vol {
+      display: flex; align-items: center; gap: .4rem; flex-shrink: 0;
+    }
+    .np-vol-icon { font-size: .9rem; cursor: pointer; opacity: .7 }
+    .np-vol input[type="range"] {
+      width: 70px; accent-color: var(--primary-light); cursor: pointer;
+    }
+    .np-close {
+      background: none;
+      border: none;
+      color: rgba(255,255,255,.5);
+      font-size: 1.1rem;
+      cursor: pointer;
+      padding: .25rem;
+    }
+    .np-close:hover { color: #fff }
+
+    /* ════════════════════════════════════════════════════════
+       IDENTIFY TAB  (existing UI)
+    ════════════════════════════════════════════════════════ */
+
+    .input-row {
+      display: grid;
+      grid-template-columns: 1fr auto 1fr;
+      gap: .75rem;
+      align-items: stretch;
+      margin-bottom: .75rem;
+    }
+    @media (max-width: 580px) {
+      .input-row { grid-template-columns: 1fr }
+      .or-divider { display: none }
+    }
+    .or-divider {
+      display: flex; align-items: center; justify-content: center;
+      width: 2rem;
+      color: var(--text-muted); font-size: .75rem; font-weight: 700;
+      letter-spacing: .08em; text-transform: uppercase;
+    }
+
+    /* Upload zone */
+    .upload-zone {
+      border: 2px dashed var(--border);
+      border-radius: var(--radius);
+      background: var(--surface);
+      padding: 1.75rem 1.25rem;
+      text-align: center;
+      cursor: pointer;
+      transition: all var(--transition);
+      display: flex; flex-direction: column; align-items: center;
+      gap: .6rem; min-height: 190px; justify-content: center; outline: none;
+    }
+    .upload-zone:hover, .upload-zone:focus, .upload-zone.drag-over {
+      border-color: var(--primary-light);
+      background: var(--surface-2);
+      box-shadow: var(--shadow); transform: translateY(-1px);
+    }
+    .upload-zone.has-file {
+      border-style: solid; border-color: var(--primary-light); background: #f0faf4;
+    }
+    .upload-icon  { font-size: 2.2rem; opacity: .65 }
+    .upload-title { font-weight: 600; font-size: .95rem }
+    .upload-hint  { font-size: .78rem; color: var(--text-muted) }
+    .file-chip {
+      display: flex; align-items: center; gap: .4rem;
+      background: var(--accent); color: var(--primary-dark);
+      border-radius: 100px; padding: .3rem .9rem;
+      font-size: .82rem; font-weight: 600; max-width: 100%;
+    }
+    .file-chip span { overflow: hidden; text-overflow: ellipsis; white-space: nowrap }
+
+    /* Record zone */
+    .record-zone {
+      background: var(--surface); border: 1px solid var(--border);
+      border-radius: var(--radius); padding: 1.75rem 1.25rem;
+      text-align: center; display: flex; flex-direction: column;
+      align-items: center; gap: .85rem; min-height: 190px; justify-content: center;
+    }
+    .record-btn {
+      width: 68px; height: 68px; border-radius: 50%; border: none;
+      background: var(--primary); color: #fff; font-size: 1.7rem;
+      cursor: pointer; transition: all var(--transition); display: flex;
+      align-items: center; justify-content: center;
+      box-shadow: 0 4px 14px rgba(45,106,79,.35);
+    }
+    .record-btn:hover { background: var(--primary-dark); transform: scale(1.06) }
+    .record-btn.active { background: #e63946; animation: pulse-rec 1.4s infinite }
+    @keyframes pulse-rec {
+      0%,100% { box-shadow: 0 0 0 0 rgba(230,57,70,.45) }
+      50%      { box-shadow: 0 0 0 14px rgba(230,57,70,0) }
+    }
+    .record-label { font-weight: 600; font-size: .9rem }
+    .record-time  { font-size: 1.4rem; font-weight: 700; color: #e63946;
+                    font-variant-numeric: tabular-nums; display: none }
+    .waveform { display: none; gap: 3px; align-items: center; height: 30px }
+    .waveform.on { display: flex }
+    .wbar { width: 4px; border-radius: 2px; background: var(--primary-light);
+            animation: wv .8s ease-in-out infinite }
+    .wbar:nth-child(1) { animation-delay:0s;   height:6px  }
+    .wbar:nth-child(2) { animation-delay:.08s; height:12px }
+    .wbar:nth-child(3) { animation-delay:.16s; height:20px }
+    .wbar:nth-child(4) { animation-delay:.24s; height:26px }
+    .wbar:nth-child(5) { animation-delay:.32s; height:30px }
+    .wbar:nth-child(6) { animation-delay:.24s; height:26px }
+    .wbar:nth-child(7) { animation-delay:.16s; height:20px }
+    .wbar:nth-child(8) { animation-delay:.08s; height:12px }
+    .wbar:nth-child(9) { animation-delay:0s;   height:6px  }
+    @keyframes wv {
+      0%,100% { transform:scaleY(.25); opacity:.5 }
+      50%      { transform:scaleY(1);  opacity:1  }
+    }
+
+    /* Settings */
+    .settings-card { padding: 1rem 1.25rem; margin-bottom: .75rem }
+    .settings-card summary {
+      cursor: pointer; list-style: none; font-weight: 600;
+      color: var(--text-muted); font-size: .88rem;
+      display: flex; align-items: center; gap: .5rem; user-select: none;
+    }
+    .settings-card summary::after { content:'▸'; margin-left:auto; transition:transform var(--transition) }
+    .settings-card[open] summary::after { transform:rotate(90deg) }
+    .settings-grid { display:grid; grid-template-columns:1fr 1fr; gap:1rem; margin-top:1.1rem }
+    @media (max-width:500px) { .settings-grid { grid-template-columns:1fr } }
+    .sgroup { display:flex; flex-direction:column; gap:.3rem }
+    .sgroup label {
+      font-size:.73rem; font-weight:700; color:var(--text-muted);
+      text-transform:uppercase; letter-spacing:.06em;
+    }
+    .sgroup input[type="number"],
+    .sgroup input[type="date"] {
+      padding:.55rem .75rem; border:1px solid var(--border);
+      border-radius:var(--radius-sm); background:var(--surface-2);
+      color:var(--text); font-size:.9rem; font-family:inherit; width:100%;
+      transition:border-color var(--transition);
+    }
+    .sgroup input:focus {
+      outline:none; border-color:var(--primary-light);
+      box-shadow:0 0 0 3px rgba(82,183,136,.18);
+    }
+    .loc-row { display:flex; gap:.4rem }
+    .loc-row input { flex:1; min-width:0 }
+    .btn-locate {
+      padding:0 .7rem; border:1px solid var(--border);
+      border-radius:var(--radius-sm); background:var(--surface-2);
+      color:var(--text-muted); cursor:pointer; font-size:.95rem;
+      transition:all var(--transition);
+    }
+    .btn-locate:hover { background:var(--accent); color:var(--primary-dark); border-color:var(--primary-light) }
+    .slider-wrap { display:flex; align-items:center; gap:.6rem }
+    .slider-wrap input[type="range"] { flex:1; accent-color:var(--primary) }
+    .slider-labels {
+      display:flex; justify-content:space-between;
+      font-size:.7rem; color:var(--text-muted); margin-top:.2rem;
+    }
+
+    /* Error */
+    .error-box {
+      display:none; background:#fff5f5; border:1px solid #ffd6d6;
+      border-radius:var(--radius-sm); padding:.85rem 1rem;
+      color:#c0392b; font-size:.88rem; margin-bottom:.75rem;
+    }
+    .error-box.on { display:block }
+
+    /* Analyze button */
+    .btn-analyze {
+      width:100%; padding:.95rem; background:var(--primary); color:#fff;
+      border:none; border-radius:var(--radius); font-size:1rem; font-weight:700;
+      cursor:pointer; transition:all var(--transition); margin-bottom:1.5rem;
+      letter-spacing:.02em; box-shadow:0 4px 14px rgba(45,106,79,.28);
+    }
+    .btn-analyze:hover:not(:disabled) {
+      background:var(--primary-dark); transform:translateY(-1px);
+      box-shadow:0 6px 20px rgba(45,106,79,.38);
+    }
+    .btn-analyze:disabled { opacity:.4; cursor:not-allowed; transform:none; box-shadow:none }
+
+    /* Loading */
+    .loading { display:none; text-align:center; padding:2.5rem 1rem }
+    .loading.on { display:block }
+    .loading-bird { font-size:2rem; display:inline-block; animation:fly 1.8s ease-in-out infinite }
+    @keyframes fly {
+      0%,100% { transform:translateY(0) rotate(-4deg) }
+      50%      { transform:translateY(-10px) rotate(4deg) }
+    }
+    .soundwave { display:flex; justify-content:center; gap:5px; margin:1rem 0 }
+    .soundwave .b {
+      width:5px; border-radius:3px; background:var(--primary-light);
+      animation:sw 1s ease-in-out infinite;
+    }
+    .soundwave .b:nth-child(1) { height:18px; animation-delay:0s   }
+    .soundwave .b:nth-child(2) { height:30px; animation-delay:.08s }
+    .soundwave .b:nth-child(3) { height:42px; animation-delay:.16s }
+    .soundwave .b:nth-child(4) { height:52px; animation-delay:.12s }
+    .soundwave .b:nth-child(5) { height:36px; animation-delay:.04s }
+    .soundwave .b:nth-child(6) { height:48px; animation-delay:.2s  }
+    .soundwave .b:nth-child(7) { height:28px; animation-delay:.08s }
+    .soundwave .b:nth-child(8) { height:38px; animation-delay:.24s }
+    .soundwave .b:nth-child(9) { height:20px; animation-delay:.16s }
+    @keyframes sw {
+      0%,100% { transform:scaleY(.3); opacity:.4 }
+      50%      { transform:scaleY(1);  opacity:1  }
+    }
+    .loading-text { color:var(--text-muted); font-size:.88rem }
+
+    /* Results */
+    .results { display:none }
+    .results.on { display:block }
+    .results-head { display:flex; align-items:baseline; justify-content:space-between; margin-bottom:.9rem }
+    .results-title { font-size:1.05rem; font-weight:700 }
+    .results-meta  { font-size:.8rem; color:var(--text-muted) }
+
+    /* Bird card */
+    .bird-card {
+      background:var(--surface); border:1px solid var(--border);
+      border-radius:var(--radius); box-shadow:var(--shadow-sm);
+      padding:1.1rem 1.4rem; margin-bottom:.65rem;
+      display:grid; grid-template-columns:1fr auto auto;
+      gap:.3rem .75rem; align-items:center;
+      animation:slideIn .3s ease backwards;
+      transition:box-shadow var(--transition), transform var(--transition);
+    }
+    .bird-card:hover { box-shadow:var(--shadow); transform:translateY(-1px) }
+    @keyframes slideIn {
+      from { opacity:0; transform:translateY(8px) }
+      to   { opacity:1; transform:translateY(0)   }
+    }
+    .bird-name { font-size:1rem; font-weight:700; line-height:1.2 }
+    .bird-sci  { font-size:.78rem; font-style:italic; color:var(--text-muted); margin-top:.1rem }
+    .bird-pct  { font-size:1.45rem; font-weight:800; line-height:1; text-align:right }
+    .pct-hi  { color:#1e7e4e }
+    .pct-med { color:#74c69d }
+    .pct-lo  { color:#f4a261 }
+
+    .btn-hear {
+      width:34px; height:34px; border-radius:50%;
+      border:1px solid var(--border); background:var(--surface-2);
+      color:var(--text-muted); font-size:.95rem; cursor:pointer;
+      display:flex; align-items:center; justify-content:center;
+      transition:all var(--transition); flex-shrink:0;
+    }
+    .btn-hear:hover { background:var(--primary); color:#fff; border-color:var(--primary) }
+
+    .bird-bar-row {
+      grid-column:1/-1; display:flex; align-items:center; gap:.65rem;
+    }
+    .bar-bg { flex:1; height:5px; background:var(--bg); border-radius:3px; overflow:hidden }
+    .bar-fill {
+      height:100%; border-radius:3px; width:0;
+      transition:width .65s cubic-bezier(.4,0,.2,1);
+    }
+    .fill-hi  { background:linear-gradient(90deg,#74c69d,#1e7e4e) }
+    .fill-med { background:linear-gradient(90deg,#b7e4c7,#52b788) }
+    .fill-lo  { background:linear-gradient(90deg,#f9dcc4,#f4a261) }
+    .bird-hits { font-size:.75rem; color:var(--text-muted); white-space:nowrap }
+
+    /* Empty / no-results */
+    .empty { text-align:center; padding:2.5rem 1rem; color:var(--text-muted) }
+    .empty-icon { font-size:2.5rem; margin-bottom:.75rem }
+    .empty h3 { font-size:1rem; color:var(--text); margin-bottom:.4rem }
+    .empty p  { font-size:.85rem }
+
+    /* Footer */
+    footer { text-align:center; padding:1rem 1rem 1.5rem; color:var(--text-muted); font-size:.78rem }
+    footer a { color:var(--primary); text-decoration:none }
+    footer a:hover { text-decoration:underline }
+
+    /* ════════════════════════════════════════════════════════
+       IMAGES TAB
+    ════════════════════════════════════════════════════════ */
+    .img-grid {
+      display: grid;
+      grid-template-columns: repeat(auto-fill, minmax(185px, 1fr));
+      gap: .75rem;
+    }
+    .img-card {
+      border-radius: var(--radius); overflow: hidden;
+      background: var(--surface); border: 1px solid var(--border);
+      box-shadow: var(--shadow-sm); transition: all var(--transition);
+    }
+    .img-card:hover { box-shadow: var(--shadow); transform: translateY(-2px) }
+    .img-card img {
+      width: 100%; aspect-ratio: 1; object-fit: cover; display: block;
+      background: var(--surface-2); cursor: pointer;
+    }
+    .img-card-info { padding: .55rem .75rem .65rem }
+    .img-card-name { font-weight: 700; font-size: .85rem; line-height: 1.25 }
+    .img-card-loc  { font-size: .7rem; color: var(--text-muted); margin-top: .15rem;
+                     white-space: nowrap; overflow: hidden; text-overflow: ellipsis }
+    .img-card-actions { display: flex; gap: .35rem; margin-top: .45rem; flex-wrap: wrap }
+    .btn-mini {
+      font-size: .72rem; padding: .18rem .55rem;
+      border: 1px solid var(--border); border-radius: 100px;
+      background: var(--surface-2); cursor: pointer; color: var(--text-muted);
+      transition: all var(--transition); white-space: nowrap; text-decoration: none;
+      display: inline-block; font-family: inherit;
+    }
+    .btn-mini:hover { background: var(--primary); color: #fff; border-color: var(--primary) }
+
+    /* Extra button on bird-card */
+    .bird-card { grid-template-columns: 1fr auto auto auto }
+
+    /* ════════════════════════════════════════════════════════
+       PHOTO ID TAB
+    ════════════════════════════════════════════════════════ */
+    .photo-zone {
+      border: 2px dashed var(--border); border-radius: var(--radius);
+      background: var(--surface); padding: 2rem 1.25rem;
+      text-align: center; cursor: pointer; transition: all var(--transition);
+      display: flex; flex-direction: column; align-items: center; gap: .75rem;
+      position: relative; outline: none;
+    }
+    .photo-zone:hover, .photo-zone.drag-over {
+      border-color: var(--primary-light); background: var(--surface-2);
+      box-shadow: var(--shadow); transform: translateY(-1px);
+    }
+    .photo-zone.has-photo { border-style: solid; border-color: var(--primary-light) }
+    .photo-preview-wrap {
+      width: 100%; max-height: 340px; overflow: hidden;
+      border-radius: var(--radius-sm); margin-bottom: .5rem;
+      display: none;
+    }
+    .photo-preview-wrap.on { display: block }
+    .photo-preview-wrap img {
+      width: 100%; max-height: 340px; object-fit: contain; display: block;
+    }
+    .photo-zone-hint { font-size: .85rem; color: var(--text-muted) }
+    .photo-btns { display: flex; gap: .6rem; flex-wrap: wrap; justify-content: center }
+    .btn-photo-action {
+      padding: .6rem 1.1rem; border-radius: var(--radius);
+      border: 1px solid var(--border); background: var(--surface-2);
+      color: var(--text); font-size: .88rem; cursor: pointer;
+      transition: all var(--transition); font-family: inherit;
+    }
+    .btn-photo-action:hover { background: var(--primary); color: #fff; border-color: var(--primary) }
+
+    /* Camera modal */
+    .cam-modal {
+      display: none; position: fixed; inset: 0; z-index: 200;
+      background: rgba(0,0,0,.82); align-items: center; justify-content: center;
+      flex-direction: column; gap: 1rem;
+    }
+    .cam-modal.on { display: flex }
+    .cam-modal video {
+      max-width: min(640px, 95vw); max-height: 70vh;
+      border-radius: var(--radius); background: #000;
+    }
+    .cam-controls { display: flex; gap: .75rem }
+    .btn-capture {
+      padding: .75rem 2rem; background: #fff; color: #111;
+      border: none; border-radius: 100px; font-size: 1rem; font-weight: 700;
+      cursor: pointer; transition: all var(--transition);
+    }
+    .btn-capture:hover { background: var(--primary-light) }
+    .btn-cam-close {
+      padding: .75rem 1.5rem; background: rgba(255,255,255,.15); color: #fff;
+      border: 1px solid rgba(255,255,255,.3); border-radius: 100px;
+      font-size: .9rem; cursor: pointer; transition: all var(--transition);
+    }
+    .btn-cam-close:hover { background: rgba(255,255,255,.25) }
+
+    /* ID results */
+    .id-status { font-size: .85rem; color: var(--text-muted); margin: .6rem 0; min-height: 1.2em }
+    .btn-identify {
+      width: 100%; padding: .9rem; background: var(--primary); color: #fff;
+      border: none; border-radius: var(--radius); font-size: 1rem; font-weight: 700;
+      cursor: pointer; transition: all var(--transition); margin: .75rem 0;
+      box-shadow: 0 4px 14px rgba(45,106,79,.28); font-family: inherit;
+    }
+    .btn-identify:hover:not(:disabled) { background: var(--primary-dark); transform: translateY(-1px) }
+    .btn-identify:disabled { opacity: .4; cursor: not-allowed; transform: none; box-shadow: none }
+
+    /* ════════════════════════════════════════════════════════
+       HOME TAB
+    ════════════════════════════════════════════════════════ */
+    .home-hero {
+      text-align: center; padding: 2rem 1rem 1.5rem;
+    }
+    .home-hero .hero-bird { font-size: 4rem; display: block; margin-bottom: .5rem;
+      animation: fly 2.5s ease-in-out infinite; display: inline-block; }
+    .home-hero h2 { font-size: 2rem; font-weight: 800; color: var(--primary-dark);
+      letter-spacing: -.03em; margin-bottom: .4rem }
+    .home-hero p { color: var(--text-muted); font-size: .95rem; max-width: 480px; margin: 0 auto }
+    .home-features {
+      display: grid; grid-template-columns: repeat(auto-fill, minmax(180px, 1fr));
+      gap: .85rem; margin: 1.5rem 0;
+    }
+    .home-card {
+      background: var(--surface); border: 1px solid var(--border);
+      border-radius: var(--radius); box-shadow: var(--shadow-sm);
+      padding: 1.3rem 1.1rem; text-align: center; cursor: pointer;
+      transition: all var(--transition);
+    }
+    .home-card:hover { box-shadow: var(--shadow); transform: translateY(-2px);
+      border-color: var(--primary-light); }
+    .home-card .hc-icon { font-size: 2rem; margin-bottom: .55rem }
+    .home-card .hc-title { font-weight: 700; font-size: .95rem; margin-bottom: .3rem;
+      color: var(--primary-dark) }
+    .home-card .hc-desc { font-size: .78rem; color: var(--text-muted); line-height: 1.45 }
+    .home-facts {
+      background: var(--surface); border: 1px solid var(--border);
+      border-radius: var(--radius); box-shadow: var(--shadow-sm);
+      padding: 1.1rem 1.4rem;
+    }
+    .home-facts h3 { font-size: .82rem; font-weight: 700; text-transform: uppercase;
+      letter-spacing: .07em; color: var(--text-muted); margin-bottom: .8rem }
+    .fact-list { display: flex; flex-direction: column; gap: .55rem }
+    .fact { display: flex; align-items: flex-start; gap: .6rem; font-size: .88rem }
+    .fact-icon { flex-shrink: 0; font-size: 1rem }
+  </style>
+</head>
+<body>
+
+<!-- ── Header + tabs ────────────────────────────────────── -->
+<header>
+  <span class="icon">🐦</span>
+  <h1>BIRDS!!!!</h1>
+  <p>Powered by BirdNET &middot; 6,000+ species worldwide</p>
+  <div class="tabs">
+    <button class="tab-btn active" data-tab="home">🏠 Home</button>
+    <button class="tab-btn"        data-tab="browse">🎵 Browse Species</button>
+    <button class="tab-btn"        data-tab="images">📷 Images</button>
+    <button class="tab-btn"        data-tab="photo-id">🦅 ID from Photo</button>
+    <button class="tab-btn"        data-tab="identify">🔬 Identify Song</button>
+  </div>
+</header>
+
+<main>
+
+  <!-- ══════════════════════════════════════════════════════
+       HOME TAB
+  ══════════════════════════════════════════════════════ -->
+  <div class="tab-panel active" id="tab-home">
+
+    <div class="home-hero">
+      <span class="hero-bird">🐦</span>
+      <h2>Welcome to BIRDS!!!!</h2>
+      <p>Explore, listen to, identify, and photograph birds from around the world. Powered by BirdNET and iNaturalist.</p>
+    </div>
+
+    <div class="home-features">
+      <div class="home-card" data-go="browse">
+        <div class="hc-icon">🎵</div>
+        <div class="hc-title">Browse Species</div>
+        <div class="hc-desc">Search any bird by name and play real recordings from iNaturalist</div>
+      </div>
+      <div class="home-card" data-go="images">
+        <div class="hc-icon">📷</div>
+        <div class="hc-title">Images</div>
+        <div class="hc-desc">Browse research-grade photos of any bird species</div>
+      </div>
+      <div class="home-card" data-go="photo-id">
+        <div class="hc-icon">🦅</div>
+        <div class="hc-title">ID from Photo</div>
+        <div class="hc-desc">Upload or snap a photo and let AI identify the bird</div>
+      </div>
+      <div class="home-card" data-go="identify">
+        <div class="hc-icon">🔬</div>
+        <div class="hc-title">Identify Song</div>
+        <div class="hc-desc">Record or upload audio to identify bird species with BirdNET</div>
+      </div>
+    </div>
+
+    <div class="home-facts">
+      <h3>Did you know?</h3>
+      <div class="fact-list">
+        <div class="fact"><span class="fact-icon">🌍</span><span>There are around <strong>10,000</strong> known bird species on Earth.</span></div>
+        <div class="fact"><span class="fact-icon">🧠</span><span>BirdNET can recognise over <strong>6,000</strong> species from sound alone.</span></div>
+        <div class="fact"><span class="fact-icon">🏃</span><span>The <strong>Peregrine Falcon</strong> is the fastest animal on Earth, diving at over 320 km/h.</span></div>
+        <div class="fact"><span class="fact-icon">💤</span><span>Some birds can sleep with <strong>one eye open</strong>, keeping half their brain alert for predators.</span></div>
+        <div class="fact"><span class="fact-icon">🗺️</span><span>The <strong>Arctic Tern</strong> migrates up to 90,000 km per year — the longest migration of any animal.</span></div>
+      </div>
+    </div>
+
+  </div>
+
+  <!-- ══════════════════════════════════════════════════════
+       BROWSE TAB
+  ══════════════════════════════════════════════════════ -->
+  <div class="tab-panel" id="tab-browse">
+
+    <div class="search-wrap">
+      <input class="search-input" id="searchInput"
+             type="search" placeholder="Search by bird name… e.g. Robin, Turdus migratorius"
+             autocomplete="off" spellcheck="false">
+      <button class="btn-search" id="searchBtn" title="Search">🔍</button>
+    </div>
+
+    <div class="search-meta" id="searchMeta"></div>
+
+    <div id="xcResults">
+      <div class="search-empty">
+        <div class="big">🎵</div>
+        <h3>Search for any bird species</h3>
+        <p>Type a common name or Latin name above to find and play real recordings.</p>
+      </div>
+    </div>
+
+  </div>
+
+  <!-- ══════════════════════════════════════════════════════
+       IMAGES TAB
+  ══════════════════════════════════════════════════════ -->
+  <div class="tab-panel" id="tab-images">
+
+    <div class="search-wrap">
+      <input class="search-input" id="imgSearchInput"
+             type="search" placeholder="Search by bird name… e.g. Kingfisher, Accipiter gentilis"
+             autocomplete="off" spellcheck="false">
+      <button class="btn-search" id="imgSearchBtn" title="Search">🔍</button>
+    </div>
+
+    <div class="search-meta" id="imgSearchMeta"></div>
+
+    <div id="imgResults">
+      <div class="search-empty">
+        <div class="big">📷</div>
+        <h3>Search for any bird species</h3>
+        <p>Type a common name or Latin name above to browse research-grade photos from iNaturalist.</p>
+      </div>
+    </div>
+
+  </div>
+
+  <!-- ══════════════════════════════════════════════════════
+       PHOTO ID TAB
+  ══════════════════════════════════════════════════════ -->
+  <div class="tab-panel" id="tab-photo-id">
+
+    <div class="photo-zone" id="photoZone" role="button" tabindex="0">
+      <div class="photo-preview-wrap" id="photoPreviewWrap">
+        <img id="photoPreview" src="" alt="Bird photo preview">
+      </div>
+      <div class="upload-icon">📸</div>
+      <div class="upload-title">Drop a photo here, or click to browse</div>
+      <div class="photo-zone-hint">JPG · PNG · WEBP</div>
+      <div class="photo-btns" id="photoBtns">
+        <button class="btn-photo-action" id="cameraBtn" title="Use camera">📷 Use Camera</button>
+      </div>
+    </div>
+
+    <input type="file" id="photoFileInput" accept="image/*" style="display:none">
+    <input type="file" id="photoCaptureInput" accept="image/*" capture="environment" style="display:none">
+
+    <div class="id-status" id="idStatus"></div>
+    <button class="btn-identify" id="idBtn" disabled>🦅 Identify Bird</button>
+
+    <div id="idResults"></div>
+
+  </div>
+
+  <!-- Camera modal -->
+  <div class="cam-modal" id="camModal">
+    <video id="camVideo" autoplay playsinline muted></video>
+    <div class="cam-controls">
+      <button class="btn-capture" id="btnCapture">📸 Capture</button>
+      <button class="btn-cam-close" id="btnCamClose">✕ Cancel</button>
+    </div>
+  </div>
+
+  <!-- ══════════════════════════════════════════════════════
+       IDENTIFY TAB
+  ══════════════════════════════════════════════════════ -->
+  <div class="tab-panel" id="tab-identify">
+
+    <div class="input-row">
+      <!-- File upload -->
+      <div class="upload-zone" id="uploadZone" role="button" tabindex="0">
+        <div class="upload-icon">📂</div>
+        <div class="upload-title">Drop audio file here</div>
+        <div class="upload-hint">or click to browse</div>
+        <div class="upload-hint">WAV &middot; MP3 &middot; FLAC &middot; OGG &middot; M4A</div>
+        <div class="file-chip" id="fileChip" style="display:none">
+          <span>✓</span><span id="fileName"></span>
+        </div>
+      </div>
+      <input type="file" id="fileInput" accept=".wav,.mp3,.flac,.ogg,.m4a,audio/*" style="display:none">
+
+      <div class="or-divider">or</div>
+
+      <!-- Microphone -->
+      <div class="record-zone">
+        <button class="record-btn" id="recordBtn" title="Record from microphone">🎙</button>
+        <div class="waveform" id="waveform">
+          <div class="wbar"></div><div class="wbar"></div><div class="wbar"></div>
+          <div class="wbar"></div><div class="wbar"></div><div class="wbar"></div>
+          <div class="wbar"></div><div class="wbar"></div><div class="wbar"></div>
+        </div>
+        <div class="record-label" id="recordLabel">Record live audio</div>
+        <div class="record-time"  id="recordTime">0:00</div>
+      </div>
+    </div>
+
+    <!-- Settings -->
+    <details class="card settings-card">
+      <summary>⚙ Settings</summary>
+      <div class="settings-grid">
+        <div class="sgroup">
+          <label>📍 Location <span style="font-weight:400;text-transform:none">(improves accuracy)</span></label>
+          <div class="loc-row">
+            <input type="number" id="latInput" placeholder="Latitude"  step="any" min="-90"  max="90">
+            <input type="number" id="lonInput" placeholder="Longitude" step="any" min="-180" max="180">
+            <button class="btn-locate" id="locateBtn" title="Use my location">📍</button>
+          </div>
+        </div>
+        <div class="sgroup">
+          <label>📅 Recording date</label>
+          <input type="date" id="dateInput">
+        </div>
+        <div class="sgroup" style="grid-column:1/-1">
+          <label>🎚 Minimum confidence &nbsp;
+            <span id="confLabel" style="color:var(--primary);font-weight:700">0.25</span>
+          </label>
+          <div class="slider-wrap">
+            <input type="range" id="confInput" min="0.05" max="0.95" step="0.05" value="0.25">
+          </div>
+          <div class="slider-labels">
+            <span>More detections</span>
+            <span>Fewer, higher confidence</span>
+          </div>
+        </div>
+      </div>
+    </details>
+
+    <div class="error-box" id="errorBox"></div>
+    <button class="btn-analyze" id="analyzeBtn" disabled>🔍 Analyze Recording</button>
+
+    <!-- Loading -->
+    <div class="loading" id="loading">
+      <div class="loading-bird">🐦</div>
+      <div class="soundwave">
+        <div class="b"></div><div class="b"></div><div class="b"></div>
+        <div class="b"></div><div class="b"></div><div class="b"></div>
+        <div class="b"></div><div class="b"></div><div class="b"></div>
+      </div>
+      <p class="loading-text">Analyzing audio with BirdNET…</p>
+    </div>
+
+    <!-- Results -->
+    <div class="results" id="results">
+      <div class="results-head">
+        <div class="results-title" id="resultsTitle"></div>
+        <div class="results-meta"  id="resultsMeta"></div>
+      </div>
+      <div id="birdCards"></div>
+    </div>
+
+  </div><!-- /tab-identify -->
+
+</main>
+
+<!-- ── Now-playing bar ─────────────────────────────────── -->
+<div class="now-playing" id="nowPlaying">
+  <div class="np-icon">🐦</div>
+  <div class="np-info">
+    <div class="np-name" id="npName">—</div>
+    <div class="np-sub"  id="npSub">xeno-canto</div>
+  </div>
+  <div class="np-progress-wrap">
+    <span class="np-time" id="npTime">0:00</span>
+    <div class="np-bar-bg" id="npBarBg">
+      <div class="np-bar-fill" id="npBarFill"></div>
+    </div>
+    <span class="np-time" id="npDur">—</span>
+  </div>
+  <div class="np-controls">
+    <button class="np-btn" id="npPlayPause">⏸</button>
+  </div>
+  <div class="np-vol">
+    <span class="np-vol-icon" id="npVolIcon">🔊</span>
+    <input type="range" id="npVolSlider" min="0" max="4" step="0.05" value="2">
+  </div>
+  <button class="np-close" id="npClose" title="Close player">✕</button>
+</div>
+
+<!-- Hidden audio element -->
+<audio id="audioEl" preload="none"></audio>
+
+<footer>
+  BIRDS!!!! &middot; identification by <a href="https://birdnet.cornell.edu" target="_blank" rel="noopener">BirdNET</a>
+  &middot; recordings &amp; photos from <a href="https://www.inaturalist.org" target="_blank" rel="noopener">iNaturalist</a>
+</footer>
+
+<script>
+// ── Tab switching ─────────────────────────────────────────────────────────────
+document.querySelectorAll('.tab-btn').forEach(btn => {
+  btn.addEventListener('click', () => {
+    document.querySelectorAll('.tab-btn').forEach(b => b.classList.remove('active'));
+    document.querySelectorAll('.tab-panel').forEach(p => p.classList.remove('active'));
+    btn.classList.add('active');
+    document.getElementById('tab-' + btn.dataset.tab).classList.add('active');
+  });
+});
+
+function switchTab(name) {
+  document.querySelectorAll('.tab-btn').forEach(b =>
+    b.classList.toggle('active', b.dataset.tab === name));
+  document.querySelectorAll('.tab-panel').forEach(p =>
+    p.classList.toggle('active', p.id === 'tab-' + name));
+}
+
+// ── Home feature cards ────────────────────────────────────────────────────────
+document.querySelectorAll('.home-card[data-go]').forEach(card => {
+  card.addEventListener('click', () => switchTab(card.dataset.go));
+});
+
+// ── Shared elements ───────────────────────────────────────────────────────────
+const $ = id => document.getElementById(id);
+const audioEl      = $('audioEl');
+const nowPlaying   = $('nowPlaying');
+const npName       = $('npName');
+const npSub        = $('npSub');
+const npTime       = $('npTime');
+const npDur        = $('npDur');
+const npBarFill    = $('npBarFill');
+const npPlayPause  = $('npPlayPause');
+const npClose      = $('npClose');
+const npVolSlider  = $('npVolSlider');
+const npVolIcon    = $('npVolIcon');
+
+// Use proxy when running from Flask (same-origin = no CORS issues for Web Audio API).
+// When opened as a standalone file, play directly but skip the gain node.
+const USE_PROXY = ['localhost','127.0.0.1'].includes(window.location.hostname);
+
+// Web Audio API gain node — allows boosting beyond 100% volume
+let playbackCtx = null;
+let gainNode    = null;
+
+function ensureGain() {
+  if (!USE_PROXY || playbackCtx) return;  // gain only works same-origin
+  playbackCtx = new (window.AudioContext || window.webkitAudioContext)();
+  const source = playbackCtx.createMediaElementSource(audioEl);
+  gainNode = playbackCtx.createGain();
+  gainNode.gain.value = parseFloat(npVolSlider.value);
+  source.connect(gainNode);
+  gainNode.connect(playbackCtx.destination);
+}
+
+npVolSlider.addEventListener('input', () => {
+  const v = parseFloat(npVolSlider.value);
+  if (gainNode) gainNode.gain.value = v;
+  npVolIcon.textContent = v === 0 ? '🔇' : v < 1 ? '🔉' : '🔊';
+});
+npVolIcon.addEventListener('click', () => {
+  // Toggle mute
+  npVolSlider.value = npVolSlider.value > 0 ? 0 : 2;
+  npVolSlider.dispatchEvent(new Event('input'));
+});
+
+// ══════════════════════════════════════════════════════════════════════════════
+// BROWSE: xeno-canto search + playback
+// ══════════════════════════════════════════════════════════════════════════════
+
+const searchInput = $('searchInput');
+const searchBtn   = $('searchBtn');
+const searchMeta  = $('searchMeta');
+const xcResults   = $('xcResults');
+
+let searchTimer;
+let currentXcCard = null;  // currently highlighted card element
+
+searchInput.addEventListener('input', () => {
+  clearTimeout(searchTimer);
+  if (searchInput.value.trim().length < 2) { searchMeta.textContent = ''; return; }
+  searchMeta.textContent = 'Searching…';
+  searchTimer = setTimeout(doSearch, 350);
+});
+searchInput.addEventListener('keydown', e => { if (e.key === 'Enter') { clearTimeout(searchTimer); doSearch(); } });
+searchBtn.addEventListener('click', () => { clearTimeout(searchTimer); doSearch(); });
+
+async function doSearch() {
+  const q = searchInput.value.trim();
+  if (q.length < 2) return;
+  searchMeta.textContent = 'Searching…';
+  try {
+    const INAT = 'https://api.inaturalist.org/v1';
+    // Step 1: resolve species
+    const taxaRes  = await fetch(INAT + '/taxa?' + new URLSearchParams({ q, rank:'species', iconic_taxa:'Aves', per_page:'8' }));
+    const taxaData = await taxaRes.json();
+    const taxa = (taxaData.results || []).filter(t => t.iconic_taxon_name === 'Aves');
+    if (!taxa.length) { renderXcResults({ recordings:[], total:0 }); return; }
+    const taxon  = taxa[0];
+    const common = (taxon.preferred_common_name || taxon.name).replace(/\b\w/g, c => c.toUpperCase());
+    // Step 2: observations with sounds
+    const obsRes  = await fetch(INAT + '/observations?' + new URLSearchParams({ taxon_id:String(taxon.id), sounds:'true', quality_grade:'research', per_page:'20', order_by:'votes' }));
+    const obsData = await obsRes.json();
+    const recordings = [];
+    for (const obs of (obsData.results || [])) {
+      for (const snd of (obs.sounds || [])) {
+        if (!snd.file_url || recordings.length >= 15) continue;
+        recordings.push({ id:String(snd.id||''), common, sci:taxon.name,
+          country:obs.place_guess||'', type:snd.subtype||'', quality:obs.quality_grade==='research'?'✓':'',
+          length:'', file:snd.file_url, obs_id:String(obs.id||'') });
+      }
+    }
+    renderXcResults({ total:obsData.total_results||0, taxon:{common, sci:taxon.name}, recordings });
+  } catch(e) {
+    searchMeta.textContent = '⚠ Search failed: ' + e.message;
+  }
+}
+
+function renderXcResults(data) {
+  const { recordings, total } = data;
+  searchMeta.textContent = total
+    ? `${total.toLocaleString()} recording${total !== 1 ? 's' : ''} found — showing top ${recordings.length}`
+    : 'No recordings found. Try a different name.';
+
+  if (!recordings.length) {
+    xcResults.innerHTML = `<div class="search-empty">
+      <div class="big">🔇</div><h3>No recordings found</h3>
+      <p>Try a different spelling or the Latin name.</p></div>`;
+    return;
+  }
+
+  const list = document.createElement('div');
+  list.className = 'xc-list';
+  recordings.forEach(rec => {
+    const typeBadgeClass = rec.type.toLowerCase().includes('song') ? 'badge-song'
+                         : rec.type.toLowerCase().includes('call') ? 'badge-call' : 'badge-other';
+
+    const card = document.createElement('div');
+    card.className = 'xc-card';
+    card.dataset.file   = rec.file;
+    card.dataset.common = rec.common;
+    card.dataset.sci    = rec.sci;
+    card.dataset.type   = rec.type;
+    card.dataset.xcid   = rec.obs_id || rec.id;
+    card.innerHTML = `
+      <button class="play-btn" title="Play">▶</button>
+      <div class="xc-info">
+        <div class="xc-common">${esc(rec.common || rec.sci)}</div>
+        <div class="xc-sci">${esc(rec.sci)}</div>
+        <div class="xc-meta">${esc(rec.country)}</div>
+      </div>
+      <div class="xc-badges">
+        ${rec.quality ? `<span class="badge badge-A">${esc(rec.quality)}</span>` : ''}
+        ${rec.type ? `<span class="badge ${typeBadgeClass}">${esc(rec.type.split(',')[0].trim())}</span>` : ''}
+        <button class="btn-mini" data-action="imgs" title="See photos">📷</button>
+      </div>`;
+
+    card.querySelector('[data-action="imgs"]').addEventListener('click', e => {
+      e.stopPropagation();
+      seeBird(rec.common || rec.sci);
+    });
+    card.addEventListener('click', () => playXcCard(card));
+    list.appendChild(card);
+  });
+  xcResults.innerHTML = '';
+  xcResults.appendChild(list);
+}
+
+function playXcCard(card) {
+  // Unhighlight previous
+  if (currentXcCard && currentXcCard !== card)
+    currentXcCard.classList.remove('playing');
+  currentXcCard = card;
+  card.classList.add('playing');
+  card.querySelector('.play-btn').textContent = '⏸';
+
+  const rawUrl   = card.dataset.file;
+  const audioUrl = USE_PROXY ? '/proxy-audio?url=' + encodeURIComponent(rawUrl) : rawUrl;
+
+  npName.textContent = card.dataset.common || card.dataset.sci;
+  npSub.textContent  = card.dataset.sci + (card.dataset.type ? ' · ' + card.dataset.type : '')
+                       + ' · iNaturalist';
+  npPlayPause.textContent = '⏸';
+  nowPlaying.classList.add('visible');
+
+  ensureGain();
+  audioEl.src = audioUrl;
+  audioEl.play().catch(err => { showError('Could not play audio: ' + err.message); });
+}
+
+// ── Audio element events ──────────────────────────────────────────────────────
+audioEl.addEventListener('timeupdate', () => {
+  if (!audioEl.duration) return;
+  const pct = (audioEl.currentTime / audioEl.duration) * 100;
+  npBarFill.style.width = pct + '%';
+  npTime.textContent = fmtTime(audioEl.currentTime);
+});
+audioEl.addEventListener('loadedmetadata', () => {
+  npDur.textContent = fmtTime(audioEl.duration);
+});
+audioEl.addEventListener('ended', () => {
+  npPlayPause.textContent = '▶';
+  if (currentXcCard) {
+    currentXcCard.classList.remove('playing');
+    currentXcCard.querySelector('.play-btn').textContent = '▶';
+    currentXcCard = null;
+  }
+});
+audioEl.addEventListener('pause', () => { npPlayPause.textContent = '▶' });
+audioEl.addEventListener('play',  () => { npPlayPause.textContent = '⏸' });
+
+npPlayPause.addEventListener('click', () => {
+  if (audioEl.paused) { audioEl.play(); if (currentXcCard) currentXcCard.querySelector('.play-btn').textContent = '⏸'; }
+  else                { audioEl.pause(); if (currentXcCard) currentXcCard.querySelector('.play-btn').textContent = '▶'; }
+});
+
+$('npBarBg').addEventListener('click', e => {
+  if (!audioEl.duration) return;
+  const r = e.currentTarget.getBoundingClientRect();
+  audioEl.currentTime = ((e.clientX - r.left) / r.width) * audioEl.duration;
+});
+
+npClose.addEventListener('click', () => {
+  audioEl.pause();
+  audioEl.src = '';
+  nowPlaying.classList.remove('visible');
+  if (currentXcCard) { currentXcCard.classList.remove('playing'); currentXcCard.querySelector('.play-btn').textContent = '▶'; currentXcCard = null; }
+});
+
+function fmtTime(s) {
+  if (!isFinite(s)) return '—';
+  const m = Math.floor(s / 60), ss = Math.floor(s % 60);
+  return `${m}:${String(ss).padStart(2,'0')}`;
+}
+
+// ── Cross-tab links ───────────────────────────────────────────────────────────
+function hearBird(name) {
+  switchTab('browse');
+  searchInput.value = name;
+  doSearch();
+  window.scrollTo({ top: 0, behavior: 'smooth' });
+}
+function seeBird(name) {
+  switchTab('images');
+  imgSearchInput.value = name;
+  doImgSearch();
+  window.scrollTo({ top: 0, behavior: 'smooth' });
+}
+
+// ══════════════════════════════════════════════════════════════════════════════
+// IMAGES: photo search
+// ══════════════════════════════════════════════════════════════════════════════
+
+const imgSearchInput = $('imgSearchInput');
+const imgSearchBtn   = $('imgSearchBtn');
+const imgSearchMeta  = $('imgSearchMeta');
+const imgResults     = $('imgResults');
+let imgSearchTimer;
+
+imgSearchInput.addEventListener('input', () => {
+  clearTimeout(imgSearchTimer);
+  if (imgSearchInput.value.trim().length < 2) { imgSearchMeta.textContent = ''; return; }
+  imgSearchMeta.textContent = 'Searching…';
+  imgSearchTimer = setTimeout(doImgSearch, 350);
+});
+imgSearchInput.addEventListener('keydown', e => { if (e.key === 'Enter') { clearTimeout(imgSearchTimer); doImgSearch(); } });
+imgSearchBtn.addEventListener('click', () => { clearTimeout(imgSearchTimer); doImgSearch(); });
+
+async function doImgSearch() {
+  const q = imgSearchInput.value.trim();
+  if (q.length < 2) return;
+  imgSearchMeta.textContent = 'Searching…';
+  try {
+    const INAT = 'https://api.inaturalist.org/v1';
+    const taxaRes  = await fetch(INAT + '/taxa?' + new URLSearchParams({ q, rank:'species', iconic_taxa:'Aves', per_page:'8' }));
+    const taxaData = await taxaRes.json();
+    const taxa = (taxaData.results || []).filter(t => t.iconic_taxon_name === 'Aves');
+    if (!taxa.length) {
+      imgSearchMeta.textContent = 'No bird species found. Try a different name.';
+      imgResults.innerHTML = `<div class="search-empty"><div class="big">📷</div><h3>No species found</h3><p>Try a different spelling or the Latin name.</p></div>`;
+      return;
+    }
+    const taxon  = taxa[0];
+    const common = (taxon.preferred_common_name || taxon.name).replace(/\b\w/g, c => c.toUpperCase());
+
+    const obsRes  = await fetch(INAT + '/observations?' + new URLSearchParams({ taxon_id:String(taxon.id), photos:'true', quality_grade:'research', per_page:'24', order_by:'votes' }));
+    const obsData = await obsRes.json();
+
+    const photos = [];
+    for (const obs of (obsData.results || [])) {
+      for (const ph of (obs.photos || [])) {
+        if (photos.length >= 24) break;
+        const medUrl = (ph.url || '').replace('/square.', '/medium.');
+        photos.push({ url: medUrl, common, sci: taxon.name, location: obs.place_guess || '', obs_id: obs.id });
+      }
+      if (photos.length >= 24) break;
+    }
+
+    imgSearchMeta.textContent = photos.length
+      ? `Showing ${photos.length} photos of ${common} (${taxon.name})`
+      : 'No photos found for this species.';
+    renderImgResults(photos);
+  } catch(e) {
+    imgSearchMeta.textContent = '⚠ Search failed: ' + e.message;
+  }
+}
+
+function renderImgResults(photos) {
+  if (!photos.length) {
+    imgResults.innerHTML = `<div class="search-empty"><div class="big">📷</div><h3>No photos found</h3><p>Try a different bird.</p></div>`;
+    return;
+  }
+  const grid = document.createElement('div');
+  grid.className = 'img-grid';
+  photos.forEach(ph => {
+    const card = document.createElement('div');
+    card.className = 'img-card';
+    card.innerHTML = `
+      <img src="${esc(ph.url)}" alt="${esc(ph.common)}" loading="lazy">
+      <div class="img-card-info">
+        <div class="img-card-name">${esc(ph.common)}</div>
+        <div class="img-card-loc" style="font-style:italic">${esc(ph.sci)}</div>
+        ${ph.location ? `<div class="img-card-loc">${esc(ph.location)}</div>` : ''}
+        <div class="img-card-actions">
+          <button class="btn-mini" data-action="sounds">🎵 Sounds</button>
+          <a class="btn-mini" href="https://www.inaturalist.org/observations/${ph.obs_id}" target="_blank" rel="noopener">🔗 View</a>
+        </div>
+      </div>`;
+    card.querySelector('img').addEventListener('click', () =>
+      window.open('https://www.inaturalist.org/observations/' + ph.obs_id, '_blank', 'noopener'));
+    card.querySelector('[data-action="sounds"]').addEventListener('click', () => hearBird(ph.common));
+    grid.appendChild(card);
+  });
+  imgResults.innerHTML = '';
+  imgResults.appendChild(grid);
+}
+
+// ══════════════════════════════════════════════════════════════════════════════
+// PHOTO ID: upload / camera → HuggingFace bird classifier
+// ══════════════════════════════════════════════════════════════════════════════
+
+const photoZone        = $('photoZone');
+const photoFileInput   = $('photoFileInput');
+const photoCaptureInput= $('photoCaptureInput');
+const photoPreviewWrap = $('photoPreviewWrap');
+const photoPreview     = $('photoPreview');
+const idBtn            = $('idBtn');
+const idStatus         = $('idStatus');
+const idResults        = $('idResults');
+const camModal         = $('camModal');
+const camVideo         = $('camVideo');
+let   photoBlob        = null;
+let   camStream        = null;
+
+function setPhoto(file) {
+  if (!file || !file.type.startsWith('image/')) return;
+  photoBlob = file;
+  const url = URL.createObjectURL(file);
+  photoPreview.src = url;
+  photoPreviewWrap.classList.add('on');
+  photoZone.classList.add('has-photo');
+  idBtn.disabled = false;
+  idStatus.textContent = '';
+  idResults.innerHTML = '';
+}
+
+photoZone.addEventListener('click', e => {
+  if (e.target.closest('#cameraBtn')) return;  // handled separately
+  photoFileInput.click();
+});
+photoZone.addEventListener('keydown', e => { if (e.key==='Enter'||e.key===' ') photoFileInput.click(); });
+photoZone.addEventListener('dragover',  e => { e.preventDefault(); photoZone.classList.add('drag-over'); });
+photoZone.addEventListener('dragleave', () => photoZone.classList.remove('drag-over'));
+photoZone.addEventListener('drop', e => {
+  e.preventDefault(); photoZone.classList.remove('drag-over');
+  const f = e.dataTransfer.files[0]; if (f) setPhoto(f);
+});
+photoFileInput.addEventListener('change', () => { if (photoFileInput.files[0]) setPhoto(photoFileInput.files[0]); });
+photoCaptureInput.addEventListener('change', () => { if (photoCaptureInput.files[0]) setPhoto(photoCaptureInput.files[0]); });
+
+// Camera button: try getUserMedia (desktop/webcam), fall back to capture input (mobile)
+$('cameraBtn').addEventListener('click', async e => {
+  e.stopPropagation();
+  if (!navigator.mediaDevices?.getUserMedia) { photoCaptureInput.click(); return; }
+  try {
+    camStream = await navigator.mediaDevices.getUserMedia({ video: { facingMode: 'environment' } });
+    camVideo.srcObject = camStream;
+    camModal.classList.add('on');
+  } catch {
+    photoCaptureInput.click();
+  }
+});
+
+$('btnCapture').addEventListener('click', () => {
+  const canvas = document.createElement('canvas');
+  canvas.width  = camVideo.videoWidth;
+  canvas.height = camVideo.videoHeight;
+  canvas.getContext('2d').drawImage(camVideo, 0, 0);
+  canvas.toBlob(blob => {
+    setPhoto(new File([blob], 'photo.jpg', { type: 'image/jpeg' }));
+    closeCam();
+  }, 'image/jpeg', 0.9);
+});
+
+$('btnCamClose').addEventListener('click', closeCam);
+
+function closeCam() {
+  if (camStream) { camStream.getTracks().forEach(t => t.stop()); camStream = null; }
+  camModal.classList.remove('on');
+  camVideo.srcObject = null;
+}
+
+idBtn.addEventListener('click', runPhotoId);
+
+// TensorFlow.js MobileNet — runs fully in the browser, no server/API key needed
+let tfModel = null;
+
+async function ensureTFModel() {
+  if (tfModel) return;
+  idStatus.textContent = 'Loading AI model… (first time only, ~9 MB)';
+  tfModel = await mobilenet.load({ version: 2, alpha: 1.0 });
+  idStatus.textContent = '';
+}
+
+async function runPhotoId() {
+  if (!photoBlob) return;
+  idBtn.disabled = true;
+  idBtn.textContent = '⏳ Identifying…';
+  idResults.innerHTML = '';
+  try {
+    await ensureTFModel();
+    idStatus.textContent = 'Identifying…';
+    // Wait for image to be fully loaded before classifying
+    await new Promise(resolve => { if (photoPreview.complete) resolve(); else photoPreview.onload = resolve; });
+    const preds = await tfModel.classify(photoPreview, 10);
+    idStatus.textContent = '';
+    displayIdResults(preds.map(p => ({
+      label: p.className,
+      score: p.probability,
+    })));
+  } catch(e) {
+    idStatus.textContent = '⚠ ' + e.message;
+  } finally {
+    idBtn.disabled = false;
+    idBtn.textContent = '🦅 Identify Bird';
+  }
+}
+
+function displayIdResults(predictions) {
+  if (!predictions?.length) {
+    idResults.innerHTML = `<div class="empty"><div class="empty-icon">🤷</div>
+      <h3>Could not identify</h3><p>Try a clearer photo with the bird more prominent.</p></div>`;
+    return;
+  }
+  const frag = document.createDocumentFragment();
+  predictions.forEach((p, i) => {
+    // MobileNet labels: "robin, American robin, Turdus migratorius" — use first part as name
+    const name = p.label.split(',')[0].trim().replace(/\b\w/g, c => c.toUpperCase());
+    const pct  = Math.round(p.score * 100);
+    const tier = p.score >= .5 ? 'hi' : p.score >= .2 ? 'med' : 'lo';
+    const card = document.createElement('div');
+    card.className = 'bird-card';
+    card.style.animationDelay = `${i*60}ms`;
+    card.innerHTML = `
+      <div>
+        <div class="bird-name">${esc(name)}</div>
+        <div class="bird-sci" data-lookup="${esc(name)}"></div>
+      </div>
+      <div class="bird-pct pct-${tier}">${pct}%</div>
+      <button class="btn-hear" title="Hear sounds">🔊</button>
+      <button class="btn-hear" title="See photos">📷</button>
+      <div class="bird-bar-row">
+        <div class="bar-bg"><div class="bar-fill fill-${tier}" data-w="${pct}"></div></div>
+      </div>`;
+    const [bHear, bImg] = card.querySelectorAll('.btn-hear');
+    bHear.addEventListener('click', e => { e.stopPropagation(); hearBird(name); });
+    bImg.addEventListener( 'click', e => { e.stopPropagation(); seeBird(name); });
+    frag.appendChild(card);
+  });
+  idResults.appendChild(frag);
+  requestAnimationFrame(() =>
+    idResults.querySelectorAll('.bar-fill').forEach(el => { el.style.width = el.dataset.w + '%'; })
+  );
+  // Asynchronously fill in Latin names via iNaturalist
+  idResults.querySelectorAll('.bird-sci[data-lookup]').forEach(el => {
+    fetchLatinName(el.dataset.lookup).then(sci => { if (sci) el.textContent = sci; });
+  });
+}
+
+async function fetchLatinName(commonName) {
+  try {
+    const res  = await fetch('https://api.inaturalist.org/v1/taxa?' +
+      new URLSearchParams({ q: commonName, rank: 'species', iconic_taxa: 'Aves', per_page: '1' }));
+    const data = await res.json();
+    const taxa = (data.results || []).filter(t => t.iconic_taxon_name === 'Aves');
+    return taxa[0]?.name || '';
+  } catch { return ''; }
+}
+
+// ══════════════════════════════════════════════════════════════════════════════
+// IDENTIFY: upload, record, analyze
+// ══════════════════════════════════════════════════════════════════════════════
+
+let audioBlob = null, audioName = 'recording.wav';
+let isRecording = false;
+let audioCtxRec, mediaStream, processor, chunks, timerInterval;
+
+const uploadZone  = $('uploadZone');
+const fileInput   = $('fileInput');
+const fileChip    = $('fileChip');
+const fileName    = $('fileName');
+const recordBtn   = $('recordBtn');
+const recordLabel = $('recordLabel');
+const recordTime  = $('recordTime');
+const waveform    = $('waveform');
+const analyzeBtn  = $('analyzeBtn');
+const confInput   = $('confInput');
+const confLabel   = $('confLabel');
+const latInput    = $('latInput');
+const lonInput    = $('lonInput');
+const dateInput   = $('dateInput');
+const locateBtn   = $('locateBtn');
+const errorBox    = $('errorBox');
+const loading     = $('loading');
+const results     = $('results');
+const resultsTitle= $('resultsTitle');
+const resultsMeta = $('resultsMeta');
+const birdCards   = $('birdCards');
+
+dateInput.value = new Date().toISOString().slice(0, 10);
+loadSettings();
+
+confInput.addEventListener('input', () => {
+  confLabel.textContent = parseFloat(confInput.value).toFixed(2);
+  saveSettings();
+});
+latInput.addEventListener('change', saveSettings);
+lonInput.addEventListener('change', saveSettings);
+dateInput.addEventListener('change', saveSettings);
+
+locateBtn.addEventListener('click', () => {
+  if (!navigator.geolocation) { showError('Geolocation not supported.'); return; }
+  locateBtn.textContent = '⏳';
+  navigator.geolocation.getCurrentPosition(
+    pos => {
+      latInput.value = pos.coords.latitude.toFixed(5);
+      lonInput.value = pos.coords.longitude.toFixed(5);
+      locateBtn.textContent = '✓';
+      setTimeout(() => locateBtn.textContent = '📍', 2000);
+      saveSettings();
+    },
+    () => { locateBtn.textContent = '📍'; showError('Could not get location.'); }
+  );
+});
+
+uploadZone.addEventListener('click', () => fileInput.click());
+uploadZone.addEventListener('keydown', e => { if (e.key==='Enter'||e.key===' ') fileInput.click(); });
+uploadZone.addEventListener('dragover',  e => { e.preventDefault(); uploadZone.classList.add('drag-over'); });
+uploadZone.addEventListener('dragleave', () => uploadZone.classList.remove('drag-over'));
+uploadZone.addEventListener('drop', e => { e.preventDefault(); uploadZone.classList.remove('drag-over'); const f=e.dataTransfer.files[0]; if(f) setFile(f); });
+fileInput.addEventListener('change', () => { if(fileInput.files[0]) setFile(fileInput.files[0]); });
+
+function setFile(f) {
+  audioBlob = f; audioName = f.name;
+  fileName.textContent = `${f.name}  (${(f.size/1048576).toFixed(1)} MB)`;
+  fileChip.style.display = 'flex';
+  uploadZone.classList.add('has-file');
+  clearRecordState();
+  analyzeBtn.disabled = false;
+  hideResults();
+}
+
+recordBtn.addEventListener('click', () => { isRecording ? stopRecording() : startRecording(); });
+
+async function startRecording() {
+  try { mediaStream = await navigator.mediaDevices.getUserMedia({ audio: true }); }
+  catch { showError('Microphone access denied.'); return; }
+  audioCtxRec = new (window.AudioContext || window.webkitAudioContext)({ sampleRate: 48000 });
+  const src = audioCtxRec.createMediaStreamSource(mediaStream);
+  processor  = audioCtxRec.createScriptProcessor(4096, 1, 1);
+  chunks = [];
+  processor.onaudioprocess = e => chunks.push(new Float32Array(e.inputBuffer.getChannelData(0)));
+  src.connect(processor); processor.connect(audioCtxRec.destination);
+  isRecording = true;
+  recordBtn.classList.add('active'); recordBtn.textContent = '⏹';
+  recordLabel.textContent = 'Recording…';
+  recordTime.style.display = 'block'; waveform.classList.add('on');
+  const t0 = Date.now();
+  timerInterval = setInterval(() => {
+    const s = Math.floor((Date.now()-t0)/1000);
+    recordTime.textContent = `${Math.floor(s/60)}:${String(s%60).padStart(2,'0')}`;
+  }, 500);
+  clearFileState();
+}
+
+function stopRecording() {
+  clearInterval(timerInterval); isRecording = false;
+  processor.disconnect(); mediaStream.getTracks().forEach(t=>t.stop()); audioCtxRec.close();
+  const total = chunks.reduce((n,c)=>n+c.length,0);
+  const merged = new Float32Array(total); let off=0;
+  for (const c of chunks) { merged.set(c,off); off+=c.length; }
+  audioBlob = encodeWAV(merged, 48000); audioName = 'recording.wav';
+  const secs = Math.round(total/48000);
+  recordBtn.classList.remove('active'); recordBtn.textContent = '🎙';
+  recordLabel.textContent = `Ready — ${secs}s recorded`;
+  recordTime.style.display = 'none'; waveform.classList.remove('on');
+  analyzeBtn.disabled = false; hideResults();
+}
+
+function encodeWAV(samples, rate) {
+  const n=samples.length, buf=new ArrayBuffer(44+n*2), v=new DataView(buf);
+  const s=(o,t)=>{ for(let i=0;i<t.length;i++) v.setUint8(o+i,t.charCodeAt(i)); };
+  s(0,'RIFF'); v.setUint32(4,36+n*2,true); s(8,'WAVE'); s(12,'fmt ');
+  v.setUint32(16,16,true); v.setUint16(20,1,true); v.setUint16(22,1,true);
+  v.setUint32(24,rate,true); v.setUint32(28,rate*2,true);
+  v.setUint16(32,2,true); v.setUint16(34,16,true);
+  s(36,'data'); v.setUint32(40,n*2,true);
+  let o=44;
+  for (const x of samples) { const c=Math.max(-1,Math.min(1,x)); v.setInt16(o,c<0?c*0x8000:c*0x7FFF,true); o+=2; }
+  return new Blob([buf],{type:'audio/wav'});
+}
+
+analyzeBtn.addEventListener('click', runAnalysis);
+
+async function runAnalysis() {
+  if (!audioBlob) return;
+  hideError(); setLoading(true); hideResults();
+  const form = new FormData();
+  form.append('audio', audioBlob, audioName);
+  form.append('lat',      latInput.value  || '0');
+  form.append('lon',      lonInput.value  || '0');
+  form.append('date',     dateInput.value || '');
+  form.append('min_conf', confInput.value);
+  form.append('week',     '-1');
+  try {
+    let res;
+    try { res = await fetch('http://localhost:5000/analyze', { method:'POST', body:form }); }
+    catch { throw new Error('BirdNET server not running — start it with: ~/bird_env/bin/python ~/bird_web.py'); }
+    const data = await res.json();
+    if (!res.ok || data.error) throw new Error(data.error || 'Analysis failed');
+    displayResults(data.detections);
+  } catch(e) { showError(e.message); }
+  finally { setLoading(false); }
+}
+
+function displayResults(detections) {
+  results.classList.add('on');
+  if (!detections || !detections.length) {
+    resultsTitle.textContent = 'No birds detected';
+    resultsMeta.textContent  = '';
+    birdCards.innerHTML = `<div class="empty">
+      <div class="empty-icon">🔇</div><h3>No bird songs found</h3>
+      <p>Try lowering the confidence threshold or using a longer recording.</p></div>`;
+    return;
+  }
+  const bySpecies = {};
+  for (const d of detections) {
+    const k = d.common_name || 'Unknown';
+    if (!bySpecies[k]) bySpecies[k] = { ...d, count:0, maxConf:0 };
+    bySpecies[k].count++;
+    bySpecies[k].maxConf = Math.max(bySpecies[k].maxConf, d.confidence);
+  }
+  const species = Object.values(bySpecies).sort((a,b)=>b.maxConf-a.maxConf);
+  resultsTitle.textContent = `Found ${species.length} species`;
+  resultsMeta.textContent  = `${detections.length} detection${detections.length!==1?'s':''} total`;
+  birdCards.innerHTML = '';
+  species.forEach((bird, i) => {
+    const pct  = Math.round(bird.maxConf*100);
+    const tier = bird.maxConf>=.7?'hi':bird.maxConf>=.4?'med':'lo';
+    const card = document.createElement('div');
+    card.className = 'bird-card';
+    card.style.animationDelay = `${i*60}ms`;
+    card.innerHTML = `
+      <div>
+        <div class="bird-name">${esc(bird.common_name||'Unknown')}</div>
+        <div class="bird-sci">${esc(bird.scientific_name||'')}</div>
+      </div>
+      <div class="bird-pct pct-${tier}">${pct}%</div>
+      <button class="btn-hear" title="Hear sounds">🔊</button>
+      <button class="btn-hear" title="See photos">📷</button>
+      <div class="bird-bar-row">
+        <div class="bar-bg"><div class="bar-fill fill-${tier}" data-w="${pct}"></div></div>
+        <div class="bird-hits">${bird.count} detection${bird.count!==1?'s':''}</div>
+      </div>`;
+    const [btnHear, btnImg] = card.querySelectorAll('.btn-hear');
+    btnHear.addEventListener('click', e => { e.stopPropagation(); hearBird(bird.common_name || bird.scientific_name); });
+    btnImg.addEventListener('click',  e => { e.stopPropagation(); seeBird(bird.common_name  || bird.scientific_name); });
+    birdCards.appendChild(card);
+  });
+  requestAnimationFrame(() =>
+    document.querySelectorAll('.bar-fill').forEach(el => { el.style.width = el.dataset.w + '%'; })
+  );
+}
+
+// ── Helpers ───────────────────────────────────────────────────────────────────
+function setLoading(on) {
+  loading.classList.toggle('on', on);
+  analyzeBtn.disabled = on;
+  analyzeBtn.textContent = on ? '⏳ Analyzing…' : '🔍 Analyze Recording';
+}
+function showError(msg) { errorBox.textContent = '⚠ '+msg; errorBox.classList.add('on'); }
+function hideError()    { errorBox.classList.remove('on'); }
+function hideResults()  { results.classList.remove('on'); birdCards.innerHTML=''; }
+function esc(s)         { return String(s).replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;'); }
+function clearFileState() {
+  fileInput.value=''; fileChip.style.display='none'; uploadZone.classList.remove('has-file');
+}
+function clearRecordState() {
+  if (isRecording) stopRecording();
+  recordBtn.textContent='🎙'; recordLabel.textContent='Record live audio';
+  recordTime.style.display='none'; waveform.classList.remove('on');
+}
+function saveSettings() {
+  localStorage.setItem('birdSettings', JSON.stringify({
+    lat:latInput.value, lon:lonInput.value, minConf:confInput.value
+  }));
+}
+function loadSettings() {
+  try {
+    const s = JSON.parse(localStorage.getItem('birdSettings')||'{}');
+    if (s.lat)     latInput.value  = s.lat;
+    if (s.lon)     lonInput.value  = s.lon;
+    if (s.minConf) { confInput.value=s.minConf; confLabel.textContent=parseFloat(s.minConf).toFixed(2); }
+  } catch {}
+}
+</script>
+
+</body>
+</html>

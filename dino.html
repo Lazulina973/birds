@@ -1,0 +1,1473 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<title>The Crumple-Horned Snorkack: HONK FURY</title>
+<style>
+  * { margin: 0; padding: 0; box-sizing: border-box; }
+  body { background: #111; display: flex; justify-content: center; align-items: center; height: 100vh; font-family: monospace; }
+  #wrap { text-align: center; }
+  canvas { background: #fff; border: 1px solid #ccc; display: block; margin: 0 auto; }
+  #score { color: #ff66ff; font-size: 22px; margin-bottom: 10px; }
+  #msg { color: #66ffff; font-size: 16px; margin-top: 10px; height: 22px; }
+</style>
+</head>
+<body>
+<div id="wrap">
+  <div id="score">Score: 0</div>
+  <canvas id="c" width="800" height="250"></canvas>
+  <div id="msg">Press Space or Up to start</div>
+</div>
+<script>
+const canvas = document.getElementById('c');
+const ctx = canvas.getContext('2d');
+const scoreEl = document.getElementById('score');
+const msgEl = document.getElementById('msg');
+
+const W = canvas.width, H = canvas.height;
+const GROUND = H - 40;
+const GRAVITY = 0.6;
+const JUMP_FORCE = -12;
+const DUCK_HEIGHT = 25;
+const STAND_HEIGHT = 45;
+
+let dino, obstacles, clouds, score, speed, running, gameOver, frame, lastObstacle;
+let highScore = 0;
+// snorkack comebacks matched to goose taunts (3 options each)
+const snorkackResponses = {
+  'FREAK': ['and proud of it', 'freak is just another word for fabulous', 'at least im interesting'],
+  'weirdo': ['takes one to know one', 'weird is my middle name', 'normal is boring bye'],
+  'UGLY': ['mirror much?', 'beauty is in the eye of the snorkack', 'ur just jealous of my glow'],
+  'go away': ['you first', 'make me lol', 'im literally running already'],
+  'ew purple': ['purple is gorgeous actually', 'purple reign baby', 'better than boring white'],
+  'wrong colour': ['theres no wrong colour', 'tell that to a rainbow', 'colour blind much'],
+  'nice horns loser': ['thanks i grew them myself', 'jealousy looks bad on u', 'theyre called CRUMPLE horns tyvm'],
+  'ur weird': ['ur boring', 'weird > basic', 'at least i have personality'],
+  'not one of us': ['good', 'never wanted to be tbh', 'thank HONK for that'],
+  'HONK HONK': ['HONK HONK yourself', 'thats MY line', 'wow so original'],
+  'get lost': ['im right here mate', 'GPS says no', 'i know exactly where i am thanks'],
+  'crumple THIS': ['no u', 'crumple deez nuts', 'ill crumple ur ego'],
+  'abomination': ['abomi-NATION of one', 'abomi-FABULOUS more like', 'big word for a small brain'],
+  'u dont belong': ['watch me', 'i belong wherever i want', 'the ground disagrees'],
+  'leave': ['make me', 'u leave first', 'im comfy here actually'],
+  'disgusting': ['ur face is disgusting', 'disgusting-LY talented', 'thats not what ur mum said'],
+  'what even r u': ['a crumple-horned snorkack, duh', 'ur worst nightmare', 'google it'],
+  'purple freak': ['purple LEGEND', 'purple ICON actually', 'say it with respect'],
+  'no horns allowed': ['my horns my rules', 'try and stop them', 'horn police arent real'],
+  'ur not a goose': ['im better than a goose', 'correct im a SNORKACK', 'promotion if anything'],
+  'IMPOSTER': ['among us reference? really?', 'sus? ur sus', 'emergency meeting on ur face'],
+  'go home': ['i AM home', 'the world is my home', 'home is where the honk is'],
+  'nobody likes u': ['i like me', 'my horns like me', 'ur mum likes me'],
+  'pathetic': ['ur the one chasing me', 'pathetic is ur honk game', 'mirror mirror on the wall'],
+  'HONK OFF': ['honk ON', 'honk OFF yourself', 'honk ON honk STRONG'],
+  'stay away': ['cant stop wont stop', 'no u stay away', 'im literally running TOWARD u'],
+  'die, potato, DIE': ['not today'],
+  'WE WERE ON A HONK': ['pivot? PIVOT? PIVOTTTT', 'we were NOT on a honk', 'oh my god just PIVOT already'],
+  'could u BE any uglier': ['could u BE any more basic', 'could u BE any less original', 'ok chandler calm down'],
+  'ur my lobster... NOT': ['ur my dinner... YES', 'im nobodys lobster im a SNORKACK', 'thats not even how lobsters work'],
+  'how YOU doin? badly': ['how YOU honkin? terribly', 'joey doesnt share HONKS', 'im doin GREAT thanks'],
+  'unagi? more like u-UGLY': ['unagi? more like u-LOSER', 'thats not even what unagi means ross', 'i HAVE unagi and its telling me ur wrong'],
+  'MY SANDWICH': ['make ur own sandwich ross', 'the moistmaker is MINE now', 'ill give u something to cry about'],
+  'PIVOT PIVOT PIVOT': ['SHUT UP SHUT UP SHUT UPPPP', 'its not gonna pivot ross', 'the couch is stuck and so r u'],
+  'OH. MY. GOD.': ['oh MY god janice go away', 'that laugh tho', 'machine gun laugh detected'],
+  'smelly snorkack': ['smelly goose smelly goose what r they feeding u', 'at least i dont smell like phoebe sang about', 'ur the smelly cat here'],
+  'SEVEN SEVEN SEVEN': ['wrong context monica', 'thats not how u count score', 'ok calm down'],
+  'he\'s her lobster': ['im nobodys lobster', 'lobsters dont even mate for life phoebe', 'thats a myth google it'],
+  'I KNOW': ['oh do u tho', 'monica voice I KNOWWW', 'congratulations u know nothing'],
+  'we were on a BREAK': ['NO U WERENT ROSS', 'eighteen pages FRONT AND BACK', 'u fell asleep reading it'],
+  'ur on a break from life': ['im on a break from ur face', 'bold words from a goose', 'life doesnt do breaks'],
+  'transponster': ['THATS NOT EVEN A WORD RACHEL', 'its statistical analysis and data reconfiguration', 'miss chanandler bong to u'],
+  'moo point': ['its MOO like a cows opinion joey', 'at least joey was trying', 'honk point more like'],
+  'JOEY DOESNT SHARE': ['neither does the snorkack', 'i wasnt offering anything anyway', 'good thing i wasnt sharing'],
+  'ur goin down like ross marriage': ['which one lol', 'three divorces and counting', 'at least i can keep a relationship'],
+  'NOT GOOD ENOUGH': ['JUST DO IT monica calm down', 'monica energy detected', 'competitive goose alert'],
+  'the LEGENDARY flop': ['legendary? ur a goose', 'the only flop here is ur insults', 'ill show u legendary'],
+  'DO THE FLOP': ['the legendary flop cant be commanded', 'flop THIS', 'i flop when I want to'],
+  'flopped like a legend': ['legends dont flop they LAND', 'the legendary flop strikes again', 'at least my flops are LEGENDARY'],
+  'MY EYES MY EYES': ['then stop looking phoebe', 'close them then', 'my beauty is blinding i know'],
+  'THEY DONT KNOW WE KNOW': ['i know that u know that i know', 'the messers become the messees', 'oh they know alright'],
+  'suppose i never find love': ['suppose u shut up', 'suppose u stop being dramatic chandler', 'suppose deez nuts'],
+  'u r the WORST goose': ['thats not what the review said', 'worst goose best snorkack', 'i accept the title proudly'],
+  'FRONT AND BACK': ['eighteen pages ross EIGHTEEN', 'maybe write shorter letters', 'nobody asked for ur essay'],
+  'u were on a BREAK up': ['we were NEVER together', 'cant break up what never started', 'delusional goose energy'],
+  'ill be there for ur funeral': ['ill be there for YOURS first', 'clap clap clap clap', 'no u wont'],
+  'ur stuck in second gear': ['at least i HAVE gears', 'still faster than u', 'better than stuck in reverse like u'],
+};
+let lastTaunt = '';
+let lastResponse = '';
+const snorkackFallback = [
+  'no', 'nope', 'lol no', 'try me', 'cope', 'swerve',
+  'hehe', 'zoom', 'L + ratio', 'denied',
+  "shut the hell up i'm trying to watch mrs browns boys",
+];
+let currentPhrase = 'no';
+let phraseTimer = 0;
+let deathInsult = '';
+let deathGooseTaunt = '';
+const deathInsults = [
+  'the geese send their regards',
+  'honked into oblivion',
+  'skill issue tbh',
+  'maybe try being a normal colour',
+  'the horns didnt help',
+  'crumpled AND honked',
+  'you call that dodging?',
+  'mrs browns boys will have to wait',
+  'even the vivaldi stopped for that one',
+  'ratio + honked + purple',
+  'snorkack? more like snor-WHACKED',
+  'that goose had a family you know',
+  'your horns are purely decorative',
+  'should have stayed in the egg',
+  'honk honk honk honk honk',
+  'the flock always wins',
+  'purple is not a survival colour',
+  'crumple-horned? more like crumple-BONED',
+  'at least you tried (barely)',
+  'the geese are doing a victory lap',
+  'luna lovegood would be disappointed',
+  'could u BE any worse at this',
+  'the geese were on a break... from mercy',
+  'PIVOT away from that one? nope',
+  'joey wouldnt share his food but hed share this L',
+  'ross has had fewer crashes than u (barely)',
+  'that was ur unagi moment and u blew it',
+  'the one where the snorkack died',
+  'OH. MY. GOD. that was embarrassing',
+  'smelly snorkack smelly snorkack its not ur fault (it is)',
+  'even chandler could dodge better than that',
+  'they dont know that we know u just flopped',
+  'eighteen pages front and back of ur failures',
+  'the legendary flop strikes again',
+  'ur love life is like ross: three divorces and a funeral',
+  'that was the legendary flop right there',
+  'WE WERE ON A BREAK from being alive',
+  'how YOU doin? dead apparently',
+  'ill be there for u... at ur funeral',
+  'ur not even the lobster ur the boiled water',
+];
+const geeseMeanPhrases = [
+  'FREAK', 'weirdo', 'UGLY', 'go away', 'ew purple', 'wrong colour',
+  'nice horns loser', 'ur weird', 'not one of us', 'HONK HONK',
+  'get lost', 'crumple THIS', 'abomination', 'u dont belong',
+  'leave', 'disgusting', 'what even r u', 'purple freak',
+  'no horns allowed', 'ur not a goose', 'IMPOSTER', 'go home',
+  'nobody likes u', 'pathetic', 'HONK OFF', 'stay away',
+  'die, potato, DIE', 'WE WERE ON A HONK',
+  'could u BE any uglier', 'ur my lobster... NOT',
+  'how YOU doin? badly', 'unagi? more like u-UGLY',
+  'MY SANDWICH', 'PIVOT PIVOT PIVOT',
+  'OH. MY. GOD.', 'smelly snorkack',
+  'SEVEN SEVEN SEVEN', 'he\'s her lobster',
+  'I KNOW', 'we were on a BREAK',
+  'ur on a break from life', 'transponster',
+  'JOEY DOESNT SHARE',
+  'ur goin down like ross marriage', 'NOT GOOD ENOUGH',
+  'the LEGENDARY flop', 'DO THE FLOP',
+  'flopped like a legend', 'MY EYES MY EYES',
+  'THEY DONT KNOW WE KNOW', 'suppose i never find love',
+  'u r the WORST goose', 'FRONT AND BACK',
+  'u were on a BREAK up',
+  'ill be there for ur funeral', 'ur stuck in second gear',
+];
+let showIntro = true;
+let introPage = 0;
+const introPages = [
+  {
+    text: [
+      "Once upon a time, in a flock of proud white geese,",
+      "a strange little gosling was born...",
+      "",
+      "It was purple. It was misshapen.",
+      "Its neck was too short. Its honk was too squeaky.",
+      "It had strange curly horns on its head.",
+    ],
+    sub: "It was a purple goose, also known as a Crumple-Horned Snorkack.",
+  },
+  {
+    text: [
+      "The other geese stared. They whispered.",
+      "\"What IS that thing?\"",
+      "\"Why is it PURPLE?!\"",
+      "\"It's... wrong. It doesn't belong here.\"",
+    ],
+    sub: "The Crumple-Horned Snorkack tried to fit in. It really did.",
+  },
+  {
+    text: [
+      "But the flock had made up their minds.",
+      "No misshapen Crumple-Horned Snorkack would waddle among THEM.",
+      "",
+      "And so the flock rose up with one purpose:",
+      "TO HONK. IT. DOWN.",
+    ],
+    sub: "They would not stop until the Snorkack was silenced.",
+  },
+  {
+    text: [
+      "But the little Crumple-Horned Snorkack had other plans.",
+      "",
+      "It would run. It would jump. It would dodge.",
+      "And it would NEVER stop honking back.",
+    ],
+    sub: "Press SPACE to run for your life.",
+  },
+];
+
+// === AUDIO ===
+const audioCtx = new (window.AudioContext || window.webkitAudioContext)();
+
+// --- Vivaldi-style background music ---
+// Four Seasons "Summer" Presto inspired melody in G minor
+const vivaldiMelody = [
+  // Presto theme - fast arpeggiated figures
+  392.0, 466.2, 587.3, 466.2, 392.0, 349.2, 392.0, 466.2,
+  587.3, 698.5, 587.3, 466.2, 392.0, 349.2, 311.1, 349.2,
+  392.0, 466.2, 587.3, 698.5, 784.0, 698.5, 587.3, 466.2,
+  // descending sequence
+  784.0, 698.5, 587.3, 523.3, 466.2, 392.0, 349.2, 311.1,
+  293.7, 349.2, 392.0, 466.2, 587.3, 523.3, 466.2, 392.0,
+  // second theme - lyrical
+  587.3, 587.3, 523.3, 466.2, 523.3, 587.3, 698.5, 659.3,
+  587.3, 523.3, 466.2, 392.0, 466.2, 523.3, 587.3, 523.3,
+  466.2, 392.0, 349.2, 311.1, 293.7, 311.1, 349.2, 392.0,
+  // dramatic ascending run
+  293.7, 311.1, 349.2, 392.0, 466.2, 523.3, 587.3, 659.3,
+  698.5, 784.0, 880.0, 784.0, 698.5, 587.3, 523.3, 466.2,
+  // tremolo section
+  392.0, 392.0, 466.2, 466.2, 587.3, 587.3, 698.5, 698.5,
+  784.0, 784.0, 698.5, 698.5, 587.3, 587.3, 466.2, 466.2,
+  // resolution
+  392.0, 466.2, 587.3, 392.0, 293.7, 349.2, 293.7, 233.1,
+  293.7, 349.2, 392.0, 466.2, 587.3, 466.2, 392.0, 293.7,
+];
+let bgNoteIndex = 0;
+let bgMusicInterval = null;
+
+// play a single "string" note - warm, organic tone
+function playStringNote(freq, vol) {
+  const t = audioCtx.currentTime;
+  const dur = 0.18;
+  // two slightly detuned oscillators for ensemble warmth
+  const osc1 = audioCtx.createOscillator();
+  const osc2 = audioCtx.createOscillator();
+  const osc3 = audioCtx.createOscillator();
+  const gain = audioCtx.createGain();
+  osc1.connect(gain);
+  osc2.connect(gain);
+  osc3.connect(gain);
+  gain.connect(audioCtx.destination);
+  // triangle waves sound like muted strings
+  osc1.type = 'triangle';
+  osc2.type = 'triangle';
+  osc3.type = 'sine'; // soft harmonic
+  osc1.frequency.setValueAtTime(freq, t);
+  osc2.frequency.setValueAtTime(freq * 1.003, t); // slight detune
+  osc3.frequency.setValueAtTime(freq * 2, t); // octave harmonic
+  // gentle attack and decay like a bowed string
+  gain.gain.setValueAtTime(0, t);
+  gain.gain.linearRampToValueAtTime(vol, t + 0.02);
+  gain.gain.linearRampToValueAtTime(vol * 0.7, t + 0.08);
+  gain.gain.linearRampToValueAtTime(0, t + dur);
+  osc1.start(t);
+  osc2.start(t);
+  osc3.start(t);
+  osc1.stop(t + dur);
+  osc2.stop(t + dur);
+  osc3.stop(t + dur);
+}
+
+function startBgMusic() {
+  if (bgMusicInterval) return;
+  bgNoteIndex = 0;
+  // play notes at ~140 BPM sixteenth notes
+  bgMusicInterval = setInterval(() => {
+    if (!running && !showIntro) return;
+    const freq = vivaldiMelody[bgNoteIndex % vivaldiMelody.length];
+    playStringNote(freq, 0.04); // very quiet
+    // occasional bass note for depth
+    if (bgNoteIndex % 4 === 0) {
+      playStringNote(freq * 0.25, 0.025);
+    }
+    bgNoteIndex++;
+  }, 107); // ~140 BPM sixteenths
+}
+
+function stopBgMusic() {
+  if (bgMusicInterval) {
+    clearInterval(bgMusicInterval);
+    bgMusicInterval = null;
+  }
+}
+
+// --- GOOSE HONKS - loud and varied ---
+
+// flying goose honk - loud, nasal, each goose has unique pitch variation
+function honk() {
+  const t = audioCtx.currentTime;
+  // each honk varies in pitch, duration and character
+  const baseFreq = 180 + Math.random() * 160;
+  const dur = 0.15 + Math.random() * 0.15;
+  const osc1 = audioCtx.createOscillator();
+  const osc2 = audioCtx.createOscillator();
+  const gain = audioCtx.createGain();
+  osc1.connect(gain);
+  osc2.connect(gain);
+  gain.connect(audioCtx.destination);
+  // mix of square and sawtooth for nasal raspy honk
+  osc1.type = 'square';
+  osc2.type = 'sawtooth';
+  osc1.frequency.setValueAtTime(baseFreq, t);
+  osc1.frequency.linearRampToValueAtTime(baseFreq * (1.2 + Math.random() * 0.3), t + dur * 0.3);
+  osc1.frequency.linearRampToValueAtTime(baseFreq * (0.6 + Math.random() * 0.3), t + dur);
+  osc2.frequency.setValueAtTime(baseFreq * 1.5, t);
+  osc2.frequency.linearRampToValueAtTime(baseFreq * (1.0 + Math.random() * 0.5), t + dur);
+  gain.gain.setValueAtTime(0.5 + Math.random() * 0.2, t);
+  gain.gain.linearRampToValueAtTime(0.3, t + dur * 0.5);
+  gain.gain.linearRampToValueAtTime(0, t + dur);
+  osc1.start(t);
+  osc2.start(t);
+  osc1.stop(t + dur);
+  osc2.stop(t + dur);
+}
+
+// standing goose honk - VERY LOUD deep foghorn, each one unique
+function honkDeep() {
+  const t = audioCtx.currentTime;
+  const baseFreq = 70 + Math.random() * 60;
+  const dur = 0.25 + Math.random() * 0.2;
+  const osc1 = audioCtx.createOscillator();
+  const osc2 = audioCtx.createOscillator();
+  const osc3 = audioCtx.createOscillator();
+  const gain = audioCtx.createGain();
+  osc1.connect(gain);
+  osc2.connect(gain);
+  osc3.connect(gain);
+  gain.connect(audioCtx.destination);
+  osc1.type = 'sawtooth';
+  osc2.type = 'square';
+  osc3.type = 'triangle';
+  // root + detuned fifth + high overtone
+  osc1.frequency.setValueAtTime(baseFreq, t);
+  osc1.frequency.linearRampToValueAtTime(baseFreq * (0.7 + Math.random() * 0.2), t + dur);
+  osc2.frequency.setValueAtTime(baseFreq * (1.48 + Math.random() * 0.04), t);
+  osc2.frequency.linearRampToValueAtTime(baseFreq * (1.2 + Math.random() * 0.3), t + dur);
+  osc3.frequency.setValueAtTime(baseFreq * (3 + Math.random()), t);
+  osc3.frequency.linearRampToValueAtTime(baseFreq * 2, t + dur);
+  const vol = 0.55 + Math.random() * 0.25;
+  gain.gain.setValueAtTime(vol, t);
+  gain.gain.linearRampToValueAtTime(vol * 0.8, t + dur * 0.3);
+  gain.gain.linearRampToValueAtTime(0, t + dur);
+  osc1.start(t);
+  osc2.start(t);
+  osc3.start(t);
+  osc1.stop(t + dur);
+  osc2.stop(t + dur);
+  osc3.stop(t + dur);
+}
+
+// double goose honk - two overlapping honks at different pitches
+function honkDouble() {
+  honkDeep();
+  // second honk slightly delayed and at a different pitch
+  setTimeout(() => honkDeep(), 60 + Math.random() * 40);
+}
+
+// huge goose honk - EXTREMELY loud, aggressive, distorted roar
+function honkHuge() {
+  const t = audioCtx.currentTime;
+  const baseFreq = 50 + Math.random() * 30; // very low
+  const dur = 0.4 + Math.random() * 0.2;
+  // 4 oscillators for maximum aggression
+  const oscs = [];
+  const gain = audioCtx.createGain();
+  gain.connect(audioCtx.destination);
+  // distorted sawtooth root
+  const o1 = audioCtx.createOscillator();
+  o1.type = 'sawtooth';
+  o1.frequency.setValueAtTime(baseFreq, t);
+  o1.frequency.linearRampToValueAtTime(baseFreq * 1.5, t + dur * 0.2);
+  o1.frequency.linearRampToValueAtTime(baseFreq * 0.5, t + dur);
+  o1.connect(gain);
+  oscs.push(o1);
+  // aggressive square scream
+  const o2 = audioCtx.createOscillator();
+  o2.type = 'square';
+  o2.frequency.setValueAtTime(baseFreq * 2, t);
+  o2.frequency.linearRampToValueAtTime(baseFreq * 3, t + dur * 0.15);
+  o2.frequency.linearRampToValueAtTime(baseFreq * 1.5, t + dur);
+  o2.connect(gain);
+  oscs.push(o2);
+  // harsh overtone
+  const o3 = audioCtx.createOscillator();
+  o3.type = 'sawtooth';
+  o3.frequency.setValueAtTime(baseFreq * 5, t);
+  o3.frequency.linearRampToValueAtTime(baseFreq * 3, t + dur);
+  o3.connect(gain);
+  oscs.push(o3);
+  // sub bass rumble
+  const o4 = audioCtx.createOscillator();
+  o4.type = 'triangle';
+  o4.frequency.setValueAtTime(baseFreq * 0.5, t);
+  o4.connect(gain);
+  oscs.push(o4);
+  // LOUD with aggressive attack
+  gain.gain.setValueAtTime(0, t);
+  gain.gain.linearRampToValueAtTime(0.8, t + 0.01);
+  gain.gain.setValueAtTime(0.75, t + dur * 0.3);
+  gain.gain.linearRampToValueAtTime(0, t + dur);
+  oscs.forEach(o => { o.start(t); o.stop(t + dur); });
+}
+
+// duck jump beep - cute quiet quack
+// duck protesting quack - LOUD defiant quack that overpowers the geese
+// snorkack jump - high rising triumphant cry
+function snorkackJump() {
+  const t = audioCtx.currentTime;
+  const dur = 0.25;
+  const osc1 = audioCtx.createOscillator();
+  const osc2 = audioCtx.createOscillator();
+  const osc3 = audioCtx.createOscillator();
+  const gain = audioCtx.createGain();
+  osc1.connect(gain);
+  osc2.connect(gain);
+  osc3.connect(gain);
+  gain.connect(audioCtx.destination);
+  osc1.type = 'sine';
+  osc2.type = 'triangle';
+  osc3.type = 'square';
+  // soaring upward cry
+  osc1.frequency.setValueAtTime(600, t);
+  osc1.frequency.linearRampToValueAtTime(1400, t + 0.06);
+  osc1.frequency.linearRampToValueAtTime(1600, t + 0.15);
+  osc1.frequency.linearRampToValueAtTime(1200, t + dur);
+  osc2.frequency.setValueAtTime(400, t);
+  osc2.frequency.linearRampToValueAtTime(900, t + 0.08);
+  osc2.frequency.linearRampToValueAtTime(700, t + dur);
+  osc3.frequency.setValueAtTime(1200, t);
+  osc3.frequency.linearRampToValueAtTime(2000, t + 0.06);
+  osc3.frequency.linearRampToValueAtTime(1500, t + dur);
+  gain.gain.setValueAtTime(0, t);
+  gain.gain.linearRampToValueAtTime(0.9, t + 0.02);
+  gain.gain.setValueAtTime(0.85, t + 0.08);
+  gain.gain.linearRampToValueAtTime(0, t + dur);
+  osc1.start(t);
+  osc2.start(t);
+  osc3.start(t);
+  osc1.stop(t + dur);
+  osc2.stop(t + dur);
+  osc3.stop(t + dur);
+}
+
+// snorkack duck - low grunting hunkered-down snort
+function snorkackDuck() {
+  const t = audioCtx.currentTime;
+  const dur = 0.2;
+  const osc1 = audioCtx.createOscillator();
+  const osc2 = audioCtx.createOscillator();
+  const osc3 = audioCtx.createOscillator();
+  const gain = audioCtx.createGain();
+  osc1.connect(gain);
+  osc2.connect(gain);
+  osc3.connect(gain);
+  gain.connect(audioCtx.destination);
+  osc1.type = 'sawtooth';
+  osc2.type = 'triangle';
+  osc3.type = 'sine';
+  // downward grumbly snort
+  osc1.frequency.setValueAtTime(400, t);
+  osc1.frequency.linearRampToValueAtTime(150, t + 0.06);
+  osc1.frequency.linearRampToValueAtTime(100, t + dur);
+  osc2.frequency.setValueAtTime(300, t);
+  osc2.frequency.linearRampToValueAtTime(120, t + 0.08);
+  osc2.frequency.linearRampToValueAtTime(80, t + dur);
+  // rumble undertone
+  osc3.frequency.setValueAtTime(60, t);
+  osc3.frequency.linearRampToValueAtTime(40, t + dur);
+  gain.gain.setValueAtTime(0, t);
+  gain.gain.linearRampToValueAtTime(0.85, t + 0.02);
+  gain.gain.setValueAtTime(0.8, t + 0.06);
+  gain.gain.linearRampToValueAtTime(0, t + dur);
+  osc1.start(t);
+  osc2.start(t);
+  osc3.start(t);
+  osc1.stop(t + dur);
+  osc2.stop(t + dur);
+  osc3.stop(t + dur);
+}
+
+// MASSIVE death honk - all the geese honk at once
+function deathHonk() {
+  const t = audioCtx.currentTime;
+  const dur = 1.2;
+  [55, 73, 98, 130, 165, 220].forEach((freq, i) => {
+    const osc = audioCtx.createOscillator();
+    const gain = audioCtx.createGain();
+    osc.connect(gain);
+    gain.connect(audioCtx.destination);
+    osc.type = i % 2 === 0 ? 'sawtooth' : 'square';
+    osc.frequency.setValueAtTime(freq, t);
+    osc.frequency.linearRampToValueAtTime(freq * 1.3, t + 0.1);
+    osc.frequency.linearRampToValueAtTime(freq * 0.4, t + dur);
+    gain.gain.setValueAtTime(0, t);
+    gain.gain.linearRampToValueAtTime(0.9, t + 0.03);
+    gain.gain.setValueAtTime(0.8, t + 0.3);
+    gain.gain.linearRampToValueAtTime(0, t + dur);
+    osc.start(t);
+    osc.stop(t + dur);
+  });
+  // high screaming overtone
+  const osc = audioCtx.createOscillator();
+  const gain = audioCtx.createGain();
+  osc.connect(gain);
+  gain.connect(audioCtx.destination);
+  osc.type = 'square';
+  osc.frequency.setValueAtTime(440, t);
+  osc.frequency.linearRampToValueAtTime(880, t + 0.15);
+  osc.frequency.linearRampToValueAtTime(110, t + dur);
+  gain.gain.setValueAtTime(0.7, t);
+  gain.gain.linearRampToValueAtTime(0, t + dur);
+  osc.start(t);
+  osc.stop(t + dur);
+}
+
+function init() {
+  dino = { x: 60, y: GROUND, w: 30, h: STAND_HEIGHT, vy: 0, ducking: false, grounded: true };
+  obstacles = [];
+  clouds = [];
+  score = 0;
+  speed = 5;
+  running = false;
+  gameOver = false;
+  frame = 0;
+  lastObstacle = 0;
+  scoreEl.textContent = 'Score: 0';
+  msgEl.textContent = 'Press Space or Up to start';
+  draw();
+}
+
+function spawnObstacle() {
+  const type = Math.random();
+  if (type < 0.5) {
+    // standing geese (50%)
+    const sub = Math.random();
+    const taunt = geeseMeanPhrases[Math.floor(Math.random() * geeseMeanPhrases.length)];
+    if (sub < 0.4) {
+      obstacles.push({ x: W, y: GROUND, w: 18, h: 35, type: 'cactus-s', honkTimer: 0, points: 1, taunt });
+    } else if (sub < 0.75) {
+      obstacles.push({ x: W, y: GROUND, w: 22, h: 50, type: 'cactus-t', honkTimer: 0, points: 3, taunt });
+      honkHuge();
+    } else {
+      obstacles.push({ x: W, y: GROUND, w: 40, h: 35, type: 'cactus-d', honkTimer: 0, points: 2, taunt });
+    }
+  } else {
+    // flying goose (50%)
+    const taunt = geeseMeanPhrases[Math.floor(Math.random() * geeseMeanPhrases.length)];
+    const birdY = GROUND - [0, 30, 55][Math.floor(Math.random() * 3)];
+    obstacles.push({ x: W, y: birdY, w: 30, h: 20, type: 'bird', wingFrame: 0, honkTimer: 0, points: 1, taunt });
+  }
+}
+
+function update() {
+  frame++;
+  speed = 5 + Math.floor(score / 10) * 0.8;
+  scoreEl.textContent = 'Score: ' + score;
+
+  // dino physics
+  if (!dino.grounded) {
+    dino.vy += GRAVITY;
+    dino.y += dino.vy;
+    if (dino.y >= GROUND) {
+      dino.y = GROUND;
+      dino.vy = 0;
+      dino.grounded = true;
+    }
+  }
+  dino.h = dino.ducking && dino.grounded ? DUCK_HEIGHT : STAND_HEIGHT;
+
+  // spawn obstacles
+  lastObstacle++;
+  const minGap = Math.max(50, 90 - speed * 3);
+  if (lastObstacle > minGap && Math.random() < 0.03) {
+    spawnObstacle();
+    lastObstacle = 0;
+  }
+
+  // move obstacles (geese chase the duck!)
+  obstacles.forEach(o => {
+    o.x -= speed;
+    // standing geese creep toward the duck (silent until dodged)
+    if (o.type !== 'bird') {
+      if (o.x > dino.x) o.x -= 0.5;
+    } else {
+      // flying geese chase horizontally and vertically
+      o.wingFrame = Math.floor(frame / 8) % 2;
+      if (o.x > dino.x) o.x -= 0.8;
+      const targetY = dino.y - dino.h / 2;
+      if (o.y < targetY) o.y += 0.4;
+      else if (o.y > targetY) o.y -= 0.4;
+    }
+  });
+  obstacles.forEach(o => {
+    if (!o.passed && o.x + o.w < dino.x) {
+      o.passed = true;
+      score += o.points || 1;
+      // angry honk when dodged
+      if (o.type === 'cactus-d') honkDouble();
+      else if (o.type === 'cactus-t') honkHuge();
+      else if (o.type === 'bird') honk();
+      else honkDeep();
+      scoreEl.textContent = 'Score: ' + score;
+    }
+  });
+  obstacles = obstacles.filter(o => o.x + o.w > -20);
+
+  // spawn clouds
+  if (Math.random() < 0.005) {
+    clouds.push({ x: W, y: 30 + Math.random() * 50, w: 40 + Math.random() * 30 });
+  }
+  clouds.forEach(c => c.x -= speed * 0.3);
+  clouds = clouds.filter(c => c.x + c.w > 0);
+
+  // collision
+  const dx = dino.x, dy = dino.y - dino.h, dw = dino.w, dh = dino.h;
+  const margin = 5;
+  for (const o of obstacles) {
+    const ox = o.x, oy = o.y - o.h, ow = o.w, oh = o.h;
+    if (dx + margin < ox + ow && dx + dw - margin > ox &&
+        dy + margin < oy + oh && dy + dh - margin > oy) {
+      running = false;
+      gameOver = true;
+      stopBgMusic();
+      deathHonk();
+      deathInsult = deathInsults[Math.floor(Math.random() * deathInsults.length)];
+      deathGooseTaunt = geeseMeanPhrases[Math.floor(Math.random() * geeseMeanPhrases.length)];
+      if (score > highScore) highScore = score;
+      scoreEl.textContent = 'Score: ' + score + '  |  Best: ' + highScore;
+      msgEl.textContent = 'YOU GOT HONKED! Press Space to restart';
+      return;
+    }
+  }
+}
+
+function drawDino() {
+  const x = dino.x, y = dino.y;
+
+  if (dino.ducking && dino.grounded) {
+    // ducking purple goose - flat and hunched
+    // body
+    ctx.fillStyle = '#9B30FF';
+    ctx.beginPath();
+    ctx.ellipse(x + 16, y - 10, 16, 9, 0.1, 0, Math.PI * 2);
+    ctx.fill();
+    ctx.strokeStyle = '#7B20CF';
+    ctx.lineWidth = 1;
+    ctx.stroke();
+    // wing (slightly lopsided)
+    ctx.fillStyle = '#B060FF';
+    ctx.beginPath();
+    ctx.ellipse(x + 12, y - 12, 9, 6, -0.3, 0, Math.PI * 2);
+    ctx.fill();
+    // head (tucked, wonky)
+    ctx.fillStyle = '#9B30FF';
+    ctx.beginPath();
+    ctx.arc(x + 30, y - 14, 7, 0, Math.PI * 2);
+    ctx.fill();
+    ctx.strokeStyle = '#7B20CF';
+    ctx.stroke();
+    // beak (slightly crooked)
+    ctx.fillStyle = '#CC77FF';
+    ctx.beginPath();
+    ctx.moveTo(x + 37, y - 15);
+    ctx.lineTo(x + 46, y - 12);
+    ctx.lineTo(x + 37, y - 11);
+    ctx.fill();
+    // determined eye
+    ctx.fillStyle = '#000';
+    ctx.beginPath();
+    ctx.arc(x + 33, y - 16, 1.8, 0, Math.PI * 2);
+    ctx.fill();
+    ctx.fillStyle = '#fff';
+    ctx.beginPath();
+    ctx.arc(x + 33.5, y - 16.5, 0.6, 0, Math.PI * 2);
+    ctx.fill();
+    // big pink curly horns (squished when ducking)
+    ctx.strokeStyle = '#FF69B4';
+    ctx.lineWidth = 2.5;
+    ctx.lineCap = 'round';
+    ctx.beginPath();
+    ctx.moveTo(x + 26, y - 19);
+    ctx.bezierCurveTo(x + 20, y - 26, x + 18, y - 32, x + 22, y - 35);
+    ctx.bezierCurveTo(x + 26, y - 37, x + 30, y - 33, x + 28, y - 28);
+    ctx.bezierCurveTo(x + 26, y - 24, x + 22, y - 27, x + 24, y - 31);
+    ctx.stroke();
+    ctx.beginPath();
+    ctx.moveTo(x + 34, y - 19);
+    ctx.bezierCurveTo(x + 40, y - 26, x + 42, y - 32, x + 38, y - 35);
+    ctx.bezierCurveTo(x + 34, y - 37, x + 30, y - 33, x + 32, y - 28);
+    ctx.bezierCurveTo(x + 34, y - 24, x + 38, y - 27, x + 36, y - 31);
+    ctx.stroke();
+  } else {
+    // legs (animated) - slightly uneven lengths
+    ctx.strokeStyle = '#CC77FF';
+    ctx.lineWidth = 2.5;
+    if (!dino.grounded) {
+      ctx.beginPath();
+      ctx.moveTo(x + 10, y - 6); ctx.lineTo(x + 10, y);
+      ctx.moveTo(x + 20, y - 6); ctx.lineTo(x + 20, y);
+      ctx.stroke();
+    } else {
+      const step = Math.floor(frame / 5) % 2;
+      ctx.beginPath();
+      ctx.moveTo(x + 10, y - 6); ctx.lineTo(x + (step === 0 ? 6 : 14), y);
+      ctx.moveTo(x + 20, y - 7); ctx.lineTo(x + (step === 0 ? 24 : 16), y);
+      ctx.stroke();
+    }
+    // feet
+    ctx.fillStyle = '#CC77FF';
+    const step = Math.floor(frame / 5) % 2;
+    const lx = dino.grounded ? (step === 0 ? x + 6 : x + 14) : x + 10;
+    const rx = dino.grounded ? (step === 0 ? x + 24 : x + 16) : x + 20;
+    ctx.beginPath();
+    ctx.moveTo(lx, y); ctx.lineTo(lx - 3, y + 2); ctx.lineTo(lx + 4, y + 2);
+    ctx.fill();
+    ctx.beginPath();
+    ctx.moveTo(rx, y); ctx.lineTo(rx - 4, y + 2); ctx.lineTo(rx + 3, y + 2);
+    ctx.fill();
+    // body - purple, slightly lopsided
+    ctx.fillStyle = '#9B30FF';
+    ctx.beginPath();
+    ctx.ellipse(x + 14, y - 20, 12, 13, 0.15, 0, Math.PI * 2);
+    ctx.fill();
+    ctx.strokeStyle = '#7B20CF';
+    ctx.lineWidth = 1;
+    ctx.stroke();
+    // wing (misshapen - one wing slightly bigger)
+    ctx.fillStyle = '#B060FF';
+    ctx.beginPath();
+    ctx.ellipse(x + 8, y - 22, 8, 8, -0.4, 0, Math.PI * 2);
+    ctx.fill();
+    // tail feathers (scraggly)
+    ctx.fillStyle = '#B060FF';
+    ctx.beginPath();
+    ctx.moveTo(x + 1, y - 26);
+    ctx.lineTo(x - 7, y - 36);
+    ctx.lineTo(x + 3, y - 29);
+    ctx.fill();
+    ctx.beginPath();
+    ctx.moveTo(x + 3, y - 29);
+    ctx.lineTo(x - 3, y - 41);
+    ctx.lineTo(x + 7, y - 31);
+    ctx.fill();
+    ctx.beginPath();
+    ctx.moveTo(x, y - 24);
+    ctx.lineTo(x - 9, y - 32);
+    ctx.lineTo(x + 2, y - 27);
+    ctx.fill();
+    // neck (wonky, slightly bent)
+    ctx.fillStyle = '#9B30FF';
+    ctx.beginPath();
+    ctx.moveTo(x + 20, y - 28);
+    ctx.quadraticCurveTo(x + 26, y - 42, x + 21, y - 46);
+    ctx.quadraticCurveTo(x + 15, y - 42, x + 16, y - 28);
+    ctx.fill();
+    ctx.strokeStyle = '#7B20CF';
+    ctx.stroke();
+    // head (slightly too big for its neck)
+    ctx.fillStyle = '#9B30FF';
+    ctx.beginPath();
+    ctx.arc(x + 20, y - 48, 8, 0, Math.PI * 2);
+    ctx.fill();
+    ctx.strokeStyle = '#7B20CF';
+    ctx.stroke();
+    // beak (slightly crooked)
+    ctx.fillStyle = '#CC77FF';
+    ctx.beginPath();
+    ctx.moveTo(x + 27, y - 49);
+    ctx.lineTo(x + 36, y - 47);
+    ctx.lineTo(x + 27, y - 45);
+    ctx.fill();
+    // determined eye (bigger than the enemy geese)
+    ctx.fillStyle = '#000';
+    ctx.beginPath();
+    ctx.arc(x + 24, y - 50, 2.5, 0, Math.PI * 2);
+    ctx.fill();
+    ctx.fillStyle = '#fff';
+    ctx.beginPath();
+    ctx.arc(x + 25, y - 51, 1, 0, Math.PI * 2);
+    ctx.fill();
+    // determined eyebrow (upward, defiant)
+    ctx.strokeStyle = '#7B20CF';
+    ctx.lineWidth = 1.5;
+    ctx.beginPath();
+    ctx.moveTo(x + 21, y - 53);
+    ctx.lineTo(x + 27, y - 54);
+    ctx.stroke();
+    // big pink curly crumple-horns!
+    ctx.strokeStyle = '#FF69B4';
+    ctx.lineWidth = 3;
+    ctx.lineCap = 'round';
+    // left horn - big spiral curling outward and back
+    ctx.beginPath();
+    ctx.moveTo(x + 15, y - 54);
+    ctx.bezierCurveTo(x + 4, y - 62, x + 2, y - 72, x + 8, y - 78);
+    ctx.bezierCurveTo(x + 14, y - 82, x + 20, y - 76, x + 16, y - 70);
+    ctx.bezierCurveTo(x + 12, y - 64, x + 6, y - 68, x + 10, y - 74);
+    ctx.stroke();
+    // right horn - big spiral curling outward and back
+    ctx.beginPath();
+    ctx.moveTo(x + 25, y - 54);
+    ctx.bezierCurveTo(x + 36, y - 62, x + 38, y - 72, x + 32, y - 78);
+    ctx.bezierCurveTo(x + 26, y - 82, x + 20, y - 76, x + 24, y - 70);
+    ctx.bezierCurveTo(x + 28, y - 64, x + 34, y - 68, x + 30, y - 74);
+    ctx.stroke();
+  }
+}
+
+function drawCactus(o) {
+  // standing silly goose
+  const x = o.x, y = o.y;
+  const scale = o.type === 'cactus-t' ? 1.3 : (o.type === 'cactus-d' ? 1 : 0.9);
+  const h = o.h * scale / (o.type === 'cactus-d' ? 1 : 1);
+
+  if (o.type === 'cactus-d') {
+    // two geese side by side
+    drawStandingGoose(x, y, 0.85);
+    drawStandingGoose(x + 22, y, 0.85);
+  } else {
+    drawStandingGoose(x, y, scale);
+  }
+}
+
+function drawStandingGoose(x, y, scale) {
+  const s = scale;
+  const w = 28 * s; // approximate width of goose
+  // flip horizontally: save, translate to right edge, scale -1
+  ctx.save();
+  ctx.translate(x + w, 0);
+  ctx.scale(-1, 1);
+  const lx = 0; // draw at local x=0
+  // legs
+  ctx.strokeStyle = '#E8A000';
+  ctx.lineWidth = 2.5 * s;
+  ctx.beginPath();
+  ctx.moveTo(lx + 8 * s, y); ctx.lineTo(lx + 6 * s, y - 14 * s);
+  ctx.moveTo(lx + 14 * s, y); ctx.lineTo(lx + 16 * s, y - 14 * s);
+  ctx.stroke();
+  // feet
+  ctx.fillStyle = '#E8A000';
+  ctx.beginPath();
+  ctx.moveTo(lx + 8 * s, y); ctx.lineTo(lx + 2 * s, y + 2); ctx.lineTo(lx + 12 * s, y + 2);
+  ctx.fill();
+  ctx.beginPath();
+  ctx.moveTo(lx + 14 * s, y); ctx.lineTo(lx + 9 * s, y + 2); ctx.lineTo(lx + 19 * s, y + 2);
+  ctx.fill();
+  // body
+  ctx.fillStyle = '#f0f0f0';
+  ctx.beginPath();
+  ctx.ellipse(lx + 11 * s, y - 22 * s, 12 * s, 10 * s, 0, 0, Math.PI * 2);
+  ctx.fill();
+  ctx.strokeStyle = '#ccc';
+  ctx.lineWidth = 1;
+  ctx.stroke();
+  // neck
+  ctx.fillStyle = '#f0f0f0';
+  ctx.beginPath();
+  ctx.moveTo(lx + 16 * s, y - 28 * s);
+  ctx.quadraticCurveTo(lx + 20 * s, y - 50 * s, lx + 14 * s, y - 55 * s);
+  ctx.quadraticCurveTo(lx + 8 * s, y - 50 * s, lx + 10 * s, y - 28 * s);
+  ctx.fill();
+  ctx.strokeStyle = '#ccc';
+  ctx.stroke();
+  // head
+  ctx.fillStyle = '#f0f0f0';
+  ctx.beginPath();
+  ctx.arc(lx + 13 * s, y - 56 * s, 7 * s, 0, Math.PI * 2);
+  ctx.fill();
+  ctx.strokeStyle = '#ccc';
+  ctx.stroke();
+  // angry eye
+  ctx.fillStyle = '#000';
+  ctx.beginPath();
+  ctx.arc(lx + 16 * s, y - 58 * s, 2 * s, 0, Math.PI * 2);
+  ctx.fill();
+  // angry eyebrow
+  ctx.strokeStyle = '#000';
+  ctx.lineWidth = 1.5 * s;
+  ctx.beginPath();
+  ctx.moveTo(lx + 13 * s, y - 61 * s);
+  ctx.lineTo(lx + 19 * s, y - 60 * s);
+  ctx.stroke();
+  // beak (open, honking!)
+  ctx.fillStyle = '#E8A000';
+  ctx.beginPath();
+  ctx.moveTo(lx + 19 * s, y - 57 * s);
+  ctx.lineTo(lx + 28 * s, y - 58 * s);
+  ctx.lineTo(lx + 19 * s, y - 55 * s);
+  ctx.fill();
+  // lower beak (open mouth)
+  ctx.beginPath();
+  ctx.moveTo(lx + 19 * s, y - 54 * s);
+  ctx.lineTo(lx + 26 * s, y - 52 * s);
+  ctx.lineTo(lx + 19 * s, y - 52 * s);
+  ctx.fill();
+  ctx.restore();
+  // honk text (drawn unflipped so it reads correctly)
+  ctx.fillStyle = '#d00';
+  ctx.font = `bold ${Math.floor(9 * s)}px monospace`;
+  ctx.textAlign = 'right';
+  ctx.textBaseline = 'middle';
+  ctx.fillText('HONK', x - 2 * s, y - 62 * s);
+}
+
+function drawBird(o) {
+  // flying silly goose - facing left (toward the duck)
+  const x = o.x, y = o.y;
+  const bw = 48; // approximate width
+  ctx.save();
+  ctx.translate(x + bw, 0);
+  ctx.scale(-1, 1);
+  const lx = 0;
+  // body
+  ctx.fillStyle = '#f0f0f0';
+  ctx.beginPath();
+  ctx.ellipse(lx + 15, y - 5, 14, 8, 0, 0, Math.PI * 2);
+  ctx.fill();
+  ctx.strokeStyle = '#ccc';
+  ctx.lineWidth = 1;
+  ctx.stroke();
+  // wings (flapping)
+  ctx.fillStyle = '#ddd';
+  if (o.wingFrame === 0) {
+    ctx.beginPath();
+    ctx.moveTo(lx + 6, y - 6);
+    ctx.lineTo(lx + 15, y - 26);
+    ctx.lineTo(lx + 24, y - 6);
+    ctx.fill();
+  } else {
+    ctx.beginPath();
+    ctx.moveTo(lx + 6, y - 4);
+    ctx.lineTo(lx + 15, y + 14);
+    ctx.lineTo(lx + 24, y - 4);
+    ctx.fill();
+  }
+  // neck
+  ctx.fillStyle = '#f0f0f0';
+  ctx.beginPath();
+  ctx.moveTo(lx + 26, y - 6);
+  ctx.quadraticCurveTo(lx + 36, y - 14, lx + 34, y - 18);
+  ctx.quadraticCurveTo(lx + 28, y - 14, lx + 22, y - 6);
+  ctx.fill();
+  // head
+  ctx.beginPath();
+  ctx.arc(lx + 34, y - 20, 6, 0, Math.PI * 2);
+  ctx.fill();
+  ctx.strokeStyle = '#ccc';
+  ctx.stroke();
+  // angry eye
+  ctx.fillStyle = '#000';
+  ctx.beginPath();
+  ctx.arc(lx + 37, y - 22, 1.5, 0, Math.PI * 2);
+  ctx.fill();
+  // angry eyebrow
+  ctx.strokeStyle = '#000';
+  ctx.lineWidth = 1.5;
+  ctx.beginPath();
+  ctx.moveTo(lx + 34, y - 25);
+  ctx.lineTo(lx + 39, y - 24);
+  ctx.stroke();
+  // beak
+  ctx.fillStyle = '#E8A000';
+  ctx.beginPath();
+  ctx.moveTo(lx + 39, y - 21);
+  ctx.lineTo(lx + 48, y - 20);
+  ctx.lineTo(lx + 39, y - 18);
+  ctx.fill();
+  // dangling feet
+  ctx.strokeStyle = '#E8A000';
+  ctx.lineWidth = 2;
+  ctx.beginPath();
+  ctx.moveTo(lx + 10, y + 3); ctx.lineTo(lx + 8, y + 10);
+  ctx.moveTo(lx + 18, y + 3); ctx.lineTo(lx + 20, y + 10);
+  ctx.stroke();
+  ctx.restore();
+  // honk text (drawn unflipped so it reads correctly)
+  ctx.fillStyle = '#d00';
+  ctx.font = 'bold 8px monospace';
+  ctx.textAlign = 'right';
+  ctx.fillText('HONK!', x - 2, y - 26);
+}
+
+function drawPsychedelicBg() {
+  const t = Date.now() / 1000;
+  // swirling gradient background
+  for (let y = 0; y < H; y += 8) {
+    const hue = (y * 1.5 + t * 60 + Math.sin(y * 0.02 + t * 2) * 40) % 360;
+    const light = 30 + Math.sin(y * 0.05 + t * 3) * 15;
+    ctx.fillStyle = `hsl(${hue}, 80%, ${light}%)`;
+    ctx.fillRect(0, y, W, 8);
+  }
+  // pulsing circles
+  for (let i = 0; i < 5; i++) {
+    const cx = W * 0.5 + Math.sin(t * 0.7 + i * 1.3) * W * 0.4;
+    const cy = H * 0.4 + Math.cos(t * 0.5 + i * 0.9) * H * 0.3;
+    const r = 30 + Math.sin(t * 2 + i) * 20;
+    const hue = (t * 80 + i * 72) % 360;
+    ctx.globalAlpha = 0.15;
+    ctx.fillStyle = `hsl(${hue}, 100%, 60%)`;
+    ctx.beginPath();
+    ctx.arc(cx, cy, r, 0, Math.PI * 2);
+    ctx.fill();
+    ctx.globalAlpha = 1;
+  }
+  // spiral waves
+  ctx.lineWidth = 2;
+  for (let s = 0; s < 3; s++) {
+    ctx.strokeStyle = `hsl(${(t * 100 + s * 120) % 360}, 100%, 60%)`;
+    ctx.globalAlpha = 0.25;
+    ctx.beginPath();
+    for (let x = 0; x < W; x += 4) {
+      const wave = Math.sin(x * 0.015 + t * 3 + s * 2) * 30 +
+                   Math.sin(x * 0.03 + t * 1.5 + s) * 15;
+      const py = H * 0.3 + wave + s * 40;
+      if (x === 0) ctx.moveTo(x, py);
+      else ctx.lineTo(x, py);
+    }
+    ctx.stroke();
+    ctx.globalAlpha = 1;
+  }
+}
+
+function draw() {
+  ctx.clearRect(0, 0, W, H);
+
+  // psychedelic background
+  drawPsychedelicBg();
+
+  // clouds (semi-transparent)
+  ctx.globalAlpha = 0.6;
+  ctx.fillStyle = '#fff';
+  clouds.forEach(c => {
+    ctx.beginPath();
+    ctx.ellipse(c.x + c.w / 2, c.y, c.w / 2, 8, 0, 0, Math.PI * 2);
+    ctx.fill();
+    ctx.beginPath();
+    ctx.ellipse(c.x + c.w * 0.3, c.y - 4, c.w * 0.3, 6, 0, 0, Math.PI * 2);
+    ctx.fill();
+  });
+  ctx.globalAlpha = 1;
+
+  // ground
+  ctx.strokeStyle = '#fff';
+  ctx.lineWidth = 2;
+  ctx.beginPath();
+  ctx.moveTo(0, GROUND);
+  ctx.lineTo(W, GROUND);
+  ctx.stroke();
+  // ground texture
+  const gOffset = (frame * speed) % 20;
+  for (let gx = -gOffset; gx < W; gx += 20) {
+    const len = 3 + Math.abs(((gx * 7) % 11) - 5);
+    ctx.beginPath();
+    ctx.moveTo(gx, GROUND + 8);
+    ctx.lineTo(gx + len, GROUND + 8);
+    ctx.stroke();
+  }
+
+  // obstacles and their speech bubbles
+  obstacles.forEach(o => {
+    if (o.type === 'bird') drawBird(o);
+    else drawCactus(o);
+    // goose taunt bubble
+    if (o.taunt && o.x > -20 && o.x < W) {
+      const bx = o.type === 'bird' ? o.x + 10 : o.x;
+      const by = o.type === 'bird' ? o.y - 35 : o.y - (o.type === 'cactus-t' ? 85 : 60);
+      ctx.font = 'bold 13px monospace';
+      const tw = ctx.measureText(o.taunt).width;
+      const bw = Math.max(22, tw / 2 + 10);
+      // solid white rounded rect bubble with dark border
+      const rx = bx + bw - bw, ry = by - 20, rw = bw * 2 + 8, rh = 24, rad = 8;
+      ctx.fillStyle = '#fff';
+      ctx.strokeStyle = '#333';
+      ctx.lineWidth = 2;
+      ctx.beginPath();
+      ctx.moveTo(rx + rad, ry);
+      ctx.lineTo(rx + rw - rad, ry);
+      ctx.quadraticCurveTo(rx + rw, ry, rx + rw, ry + rad);
+      ctx.lineTo(rx + rw, ry + rh - rad);
+      ctx.quadraticCurveTo(rx + rw, ry + rh, rx + rw - rad, ry + rh);
+      ctx.lineTo(rx + rad, ry + rh);
+      ctx.quadraticCurveTo(rx, ry + rh, rx, ry + rh - rad);
+      ctx.lineTo(rx, ry + rad);
+      ctx.quadraticCurveTo(rx, ry, rx + rad, ry);
+      ctx.closePath();
+      ctx.fill();
+      ctx.stroke();
+      // tail pointing down to goose
+      ctx.fillStyle = '#fff';
+      ctx.beginPath();
+      ctx.moveTo(bx + bw - 5, by + 4);
+      ctx.lineTo(bx + bw, by + 12);
+      ctx.lineTo(bx + bw + 5, by + 4);
+      ctx.fill();
+      ctx.strokeStyle = '#333';
+      ctx.lineWidth = 2;
+      ctx.beginPath();
+      ctx.moveTo(bx + bw - 5, by + 4);
+      ctx.lineTo(bx + bw, by + 12);
+      ctx.lineTo(bx + bw + 5, by + 4);
+      ctx.stroke();
+      // cover tail join with white
+      ctx.fillStyle = '#fff';
+      ctx.fillRect(bx + bw - 6, by + 2, 12, 4);
+      // text - dark red, big and bold
+      ctx.fillStyle = '#aa0000';
+      ctx.textAlign = 'center';
+      ctx.textBaseline = 'middle';
+      ctx.fillText(o.taunt, bx + bw, by - 8);
+    }
+  });
+
+  // dino
+  drawDino();
+
+  // speech bubble - only changes when dodging a goose (below or above one)
+  if (running) {
+    const closestGoose = obstacles.find(o => {
+      const dist = Math.abs(o.x - dino.x);
+      return dist < 60 && o.x > dino.x - 20;
+    });
+    const nearGoose = !!closestGoose;
+    if (nearGoose && !dino._wasNearGoose) {
+      if (closestGoose.taunt && snorkackResponses[closestGoose.taunt]) {
+        const options = snorkackResponses[closestGoose.taunt];
+        let pick;
+        // prevent same taunt+response combo twice in a row
+        do {
+          pick = options[Math.floor(Math.random() * options.length)];
+        } while (pick === lastResponse && closestGoose.taunt === lastTaunt && options.length > 1);
+        lastTaunt = closestGoose.taunt;
+        lastResponse = pick;
+        currentPhrase = pick;
+      } else {
+        currentPhrase = snorkackFallback[Math.floor(Math.random() * snorkackFallback.length)];
+      }
+    }
+    dino._wasNearGoose = nearGoose;
+    const bx = dino.x + 30, by = dino.y - (dino.ducking && dino.grounded ? 30 : 65);
+    ctx.font = 'bold 11px monospace';
+    const tw = ctx.measureText(currentPhrase).width;
+    const bw = Math.max(22, tw / 2 + 8);
+    // bubble
+    ctx.fillStyle = '#fff';
+    ctx.beginPath();
+    ctx.ellipse(bx + bw, by - 8, bw + 4, 12, 0, 0, Math.PI * 2);
+    ctx.fill();
+    ctx.strokeStyle = '#7B20CF';
+    ctx.lineWidth = 1.5;
+    ctx.stroke();
+    // tail pointing to snorkack
+    ctx.fillStyle = '#fff';
+    ctx.beginPath();
+    ctx.moveTo(bx + 4, by);
+    ctx.lineTo(bx - 2, by + 8);
+    ctx.lineTo(bx + 10, by + 2);
+    ctx.fill();
+    ctx.strokeStyle = '#7B20CF';
+    ctx.beginPath();
+    ctx.moveTo(bx + 4, by);
+    ctx.lineTo(bx - 2, by + 8);
+    ctx.lineTo(bx + 10, by + 2);
+    ctx.stroke();
+    // text
+    ctx.fillStyle = '#9B30FF';
+    ctx.textAlign = 'center';
+    ctx.textBaseline = 'middle';
+    ctx.fillText(currentPhrase, bx + bw, by - 8);
+  }
+
+  // game over overlay
+  if (gameOver) {
+    // translucent red background
+    ctx.fillStyle = 'rgba(150, 0, 0, 0.7)';
+    ctx.fillRect(0, 0, W, H);
+    // huge red text with black outline
+    ctx.font = 'bold 52px monospace';
+    ctx.textAlign = 'center';
+    ctx.textBaseline = 'middle';
+    // black outline
+    ctx.strokeStyle = '#000';
+    ctx.lineWidth = 5;
+    ctx.strokeText('YOU GOT HONKED', W / 2, H / 2 - 25);
+    // red fill
+    ctx.fillStyle = '#ff2222';
+    ctx.fillText('YOU GOT HONKED', W / 2, H / 2 - 25);
+    // score below
+    ctx.font = 'bold 22px monospace';
+    ctx.strokeStyle = '#000';
+    ctx.lineWidth = 3;
+    ctx.strokeText('Score: ' + score + '  |  Best: ' + highScore, W / 2, H / 2 + 25);
+    ctx.fillStyle = '#fff';
+    ctx.fillText('Score: ' + score + '  |  Best: ' + highScore, W / 2, H / 2 + 20);
+    // funny insult
+    ctx.font = 'italic 16px monospace';
+    ctx.fillStyle = '#ffaaaa';
+    ctx.fillText(deathInsult, W / 2, H / 2 + 50);
+    // taunting goose
+    const gx = W * 0.2, gy = H / 2 + 85;
+    // body
+    ctx.fillStyle = '#f0f0f0';
+    ctx.beginPath();
+    ctx.ellipse(gx, gy, 16, 12, 0, 0, Math.PI * 2);
+    ctx.fill();
+    ctx.strokeStyle = '#ccc';
+    ctx.lineWidth = 1;
+    ctx.stroke();
+    // neck
+    ctx.fillStyle = '#f0f0f0';
+    ctx.beginPath();
+    ctx.moveTo(gx + 10, gy - 8);
+    ctx.quadraticCurveTo(gx + 16, gy - 24, gx + 10, gy - 30);
+    ctx.quadraticCurveTo(gx + 4, gy - 24, gx + 4, gy - 8);
+    ctx.fill();
+    // head
+    ctx.beginPath();
+    ctx.arc(gx + 8, gy - 32, 8, 0, Math.PI * 2);
+    ctx.fill();
+    // smug eye
+    ctx.fillStyle = '#000';
+    ctx.beginPath();
+    ctx.arc(gx + 12, gy - 34, 2, 0, Math.PI * 2);
+    ctx.fill();
+    // smug eyebrow (raised)
+    ctx.strokeStyle = '#000';
+    ctx.lineWidth = 1.5;
+    ctx.beginPath();
+    ctx.moveTo(gx + 9, gy - 38);
+    ctx.lineTo(gx + 15, gy - 37);
+    ctx.stroke();
+    // open beak (laughing)
+    ctx.fillStyle = '#E8A000';
+    ctx.beginPath();
+    ctx.moveTo(gx + 15, gy - 33);
+    ctx.lineTo(gx + 26, gy - 34);
+    ctx.lineTo(gx + 15, gy - 30);
+    ctx.fill();
+    ctx.beginPath();
+    ctx.moveTo(gx + 15, gy - 29);
+    ctx.lineTo(gx + 24, gy - 26);
+    ctx.lineTo(gx + 15, gy - 26);
+    ctx.fill();
+    // taunt bubble from goose
+    const deathTaunt = deathGooseTaunt;
+    ctx.font = 'bold 12px monospace';
+    const dtw = ctx.measureText(deathTaunt).width;
+    const dbw = Math.max(20, dtw / 2 + 10);
+    ctx.fillStyle = '#fff';
+    ctx.beginPath();
+    ctx.ellipse(gx + 8 + dbw + 15, gy - 50, dbw + 4, 12, 0, 0, Math.PI * 2);
+    ctx.fill();
+    ctx.strokeStyle = '#333';
+    ctx.lineWidth = 2;
+    ctx.stroke();
+    ctx.fillStyle = '#cc0000';
+    ctx.textAlign = 'center';
+    ctx.textBaseline = 'middle';
+    ctx.fillText(deathTaunt, gx + 8 + dbw + 15, gy - 50);
+  }
+}
+
+function drawIntro() {
+  const t = Date.now() / 1000;
+  // psychedelic bg
+  drawPsychedelicBg();
+
+  // dark overlay for readability
+  ctx.fillStyle = 'rgba(0, 0, 0, 0.6)';
+  ctx.fillRect(0, 0, W, H);
+
+  const page = introPages[introPage];
+
+  // title on first page
+  if (introPage === 0) {
+    ctx.fillStyle = '#FFD700';
+    ctx.font = 'bold 22px monospace';
+    ctx.textAlign = 'center';
+    ctx.textBaseline = 'middle';
+    ctx.fillText('THE CRUMPLE-HORNED SNORKACK: HONK FURY', W / 2, 28);
+  }
+
+  // story text
+  ctx.fillStyle = '#fff';
+  ctx.font = '14px monospace';
+  ctx.textAlign = 'center';
+  const startY = introPage === 0 ? 65 : 50;
+  page.text.forEach((line, i) => {
+    // quoted lines in different color
+    if (line.startsWith('"')) ctx.fillStyle = '#ff6666';
+    else if (line.startsWith('TO HONK')) ctx.fillStyle = '#ff4444';
+    else ctx.fillStyle = '#fff';
+    ctx.fillText(line, W / 2, startY + i * 22);
+  });
+
+  // draw the snorkack on the last page BEFORE subtitle so horns go behind text
+  if (introPage === 3) {
+    const px = W / 2;
+    // big pink curly crumple-horns first (behind everything)
+    ctx.strokeStyle = '#FF69B4';
+    ctx.lineWidth = 3;
+    ctx.lineCap = 'round';
+    ctx.beginPath();
+    ctx.moveTo(px + 1, H - 126);
+    ctx.bezierCurveTo(px - 10, H - 134, px - 12, H - 144, px - 6, H - 150);
+    ctx.bezierCurveTo(px, H - 154, px + 6, H - 148, px + 2, H - 142);
+    ctx.bezierCurveTo(px - 2, H - 136, px - 8, H - 140, px - 4, H - 146);
+    ctx.stroke();
+    ctx.beginPath();
+    ctx.moveTo(px + 11, H - 126);
+    ctx.bezierCurveTo(px + 22, H - 134, px + 24, H - 144, px + 18, H - 150);
+    ctx.bezierCurveTo(px + 12, H - 154, px + 6, H - 148, px + 10, H - 142);
+    ctx.bezierCurveTo(px + 14, H - 136, px + 20, H - 140, px + 16, H - 146);
+    ctx.stroke();
+    // body
+    ctx.fillStyle = '#9B30FF';
+    ctx.beginPath();
+    ctx.ellipse(px, H - 90, 12, 13, 0.15, 0, Math.PI * 2);
+    ctx.fill();
+    // wing
+    ctx.fillStyle = '#B060FF';
+    ctx.beginPath();
+    ctx.ellipse(px - 5, H - 92, 8, 8, -0.4, 0, Math.PI * 2);
+    ctx.fill();
+    // neck (wonky)
+    ctx.fillStyle = '#9B30FF';
+    ctx.beginPath();
+    ctx.moveTo(px + 6, H - 100);
+    ctx.quadraticCurveTo(px + 12, H - 114, px + 7, H - 118);
+    ctx.quadraticCurveTo(px + 1, H - 114, px + 2, H - 100);
+    ctx.fill();
+    // head
+    ctx.beginPath();
+    ctx.arc(px + 6, H - 120, 8, 0, Math.PI * 2);
+    ctx.fill();
+    // beak
+    ctx.fillStyle = '#CC77FF';
+    ctx.beginPath();
+    ctx.moveTo(px + 13, H - 121);
+    ctx.lineTo(px + 22, H - 119);
+    ctx.lineTo(px + 13, H - 117);
+    ctx.fill();
+    // determined eye
+    ctx.fillStyle = '#000';
+    ctx.beginPath();
+    ctx.arc(px + 10, H - 122, 2.5, 0, Math.PI * 2);
+    ctx.fill();
+    ctx.fillStyle = '#fff';
+    ctx.beginPath();
+    ctx.arc(px + 11, H - 123, 1, 0, Math.PI * 2);
+    ctx.fill();
+  }
+
+  // subtitle (drawn on top of sprite)
+  ctx.fillStyle = '#66ffff';
+  ctx.font = 'bold 16px monospace';
+  ctx.fillText(page.sub, W / 2, H - 50);
+
+  // draw angry geese on pages 1-2
+  if (introPage === 1 || introPage === 2) {
+    const gx = [W * 0.2, W * 0.5, W * 0.8];
+    gx.forEach((x, i) => {
+      const bob = Math.sin(t * 3 + i) * 3;
+      ctx.fillStyle = '#f0f0f0';
+      ctx.beginPath();
+      ctx.arc(x, H - 80 + bob, 12, 0, Math.PI * 2);
+      ctx.fill();
+      ctx.fillStyle = '#E8A000';
+      ctx.beginPath();
+      ctx.moveTo(x - 10, H - 80 + bob);
+      ctx.lineTo(x - 18, H - 82 + bob);
+      ctx.lineTo(x - 10, H - 76 + bob);
+      ctx.fill();
+      ctx.fillStyle = '#000';
+      ctx.beginPath();
+      ctx.arc(x - 4, H - 83 + bob, 2, 0, Math.PI * 2);
+      ctx.fill();
+      // angry eyebrow
+      ctx.strokeStyle = '#000';
+      ctx.lineWidth = 1.5;
+      ctx.beginPath();
+      ctx.moveTo(x - 7, H - 87 + bob);
+      ctx.lineTo(x - 1, H - 86 + bob);
+      ctx.stroke();
+    });
+  }
+
+  // page indicator
+  ctx.fillStyle = '#666';
+  ctx.font = '12px monospace';
+  ctx.fillText((introPage + 1) + ' / ' + introPages.length + '  [SPACE]', W / 2, H - 15);
+}
+
+function gameLoop() {
+  if (showIntro) {
+    drawIntro();
+  } else if (running) {
+    update();
+    draw();
+  }
+  requestAnimationFrame(gameLoop);
+}
+
+document.addEventListener('keydown', e => {
+  const key = e.key;
+  if ((key === ' ' || key === 'ArrowUp') && showIntro) {
+    introPage++;
+    if (introPage >= introPages.length) {
+      showIntro = false;
+      init();
+      running = true;
+      startBgMusic();
+      msgEl.textContent = '';
+      scoreEl.textContent = 'Score: 0';
+    }
+    e.preventDefault();
+    return;
+  }
+  if ((key === ' ' || key === 'ArrowUp') && gameOver) {
+    init();
+    running = true;
+    startBgMusic();
+    msgEl.textContent = '';
+    e.preventDefault();
+    return;
+  }
+  if ((key === ' ' || key === 'ArrowUp') && !running && !gameOver) {
+    running = true;
+    msgEl.textContent = '';
+  }
+  if ((key === ' ' || key === 'ArrowUp') && dino.grounded && running) {
+    dino.vy = JUMP_FORCE;
+    dino.grounded = false;
+    dino.ducking = false;
+    snorkackJump();
+    e.preventDefault();
+  }
+  if (key === 'ArrowDown' && running && !dino.ducking) {
+    dino.ducking = true;
+    snorkackDuck();
+    if (!dino.grounded) dino.vy += 4; // fast fall
+    e.preventDefault();
+  }
+});
+
+document.addEventListener('keyup', e => {
+  if (e.key === 'ArrowDown') dino.ducking = false;
+});
+
+scoreEl.textContent = '';
+msgEl.textContent = '';
+init();
+gameLoop();
+</script>
+</body>
+</html>

@@ -1,0 +1,1063 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<title>Between Worlds</title>
+<style>
+* { margin: 0; padding: 0; box-sizing: border-box; }
+body { background: #000; display: flex; flex-direction: column; justify-content: center; align-items: center; min-height: 100vh; font-family: Georgia, serif; }
+canvas { display: block; border: 2px solid #1a1030; }
+#controls { display: flex; gap: 16px; align-items: center; margin-top: 12px; }
+button { background: #1a1030; color: #b8a0ff; border: 1px solid #4a3080; padding: 8px 20px; cursor: pointer; font-family: Georgia, serif; font-size: 14px; border-radius: 4px; }
+button:hover { background: #2a1f50; }
+#progress-bar { width: 520px; height: 4px; background: #1a1030; border-radius: 2px; cursor: pointer; }
+#progress-fill { height: 100%; background: #7a50d0; border-radius: 2px; width: 0%; pointer-events: none; }
+#scene-label { color: #5a4070; font-size: 12px; min-width: 200px; text-align: center; }
+</style>
+</head>
+<body>
+<canvas id="film"></canvas>
+<div id="controls">
+  <button id="btnPlay">|| Pause</button>
+  <div id="progress-bar"><div id="progress-fill"></div></div>
+  <span id="scene-label"></span>
+</div>
+
+<script>
+const W = 800, H = 450;
+const canvas = document.getElementById('film');
+canvas.width = W; canvas.height = H;
+const ctx = canvas.getContext('2d');
+
+// ── Scene list ────────────────────────────────────────────────────────────────
+const SCENES = [
+  { id:'title',     dur:4,   label:'Between Worlds'             },
+  { id:'dream1',    dur:5,   label:'The Dream World'            },
+  { id:'dream2',    dur:5,   label:'No Control'                 },
+  { id:'crumble',   dur:6,   label:'The Dream Turns'            },
+  { id:'real1',     dur:5,   label:'The Real World'             },
+  { id:'realawake', dur:7,   label:'Awake in the Real World'    },
+  { id:'haunted',   dur:6,   label:'Haunted'                    },
+  { id:'doze',      dur:6,   label:'Falling Asleep'             },
+  { id:'watcher',   dur:6,   label:'The Watcher'                },
+  { id:'real2',     dur:6,   label:'Death in the Real'          },
+  { id:'dread',     dur:5,   label:'Shadow in the Dream'        },
+  { id:'run',       dur:5,   label:'No Exit'                    },
+  { id:'trap',      dur:5,   label:'Cornered'                   },
+  { id:'final',     dur:4,   label:"It's Final"                 },
+  { id:'resolve',   dur:5,   label:'The Decision'               },
+  { id:'learn',     dur:6,   label:'Learning'                   },
+  { id:'firstwin',  dur:5,   label:'First Victory'              },
+  { id:'training',  dur:7,   label:'Training'                   },
+  { id:'showdown',  dur:7,   label:'The Showdown'               },
+  { id:'struggle',  dur:6,   label:'Overwhelmed'                },
+  { id:'turn',      dur:5,   label:'The Turn'                   },
+  { id:'master',    dur:5,   label:'Mastery'                    },
+  { id:'revelation',dur:6,   label:'Revelation'                 },
+  { id:'end',       dur:4,   label:'The End'                    },
+];
+const TOTAL = SCENES.reduce((a,s)=>a+s.dur, 0);
+
+// ── State ─────────────────────────────────────────────────────────────────────
+let elapsed = 0, lastTS = null, playing = true;
+
+// ── Stars ─────────────────────────────────────────────────────────────────────
+const stars = Array.from({length:200}, ()=>({
+  x: Math.random()*W,
+  y: Math.random()*H*0.72,
+  r: Math.random()*1.8+0.4,
+  spd: Math.random()*0.4+0.1,
+  ph: Math.random()*Math.PI*2
+}));
+
+// ── Particles ─────────────────────────────────────────────────────────────────
+const particles = Array.from({length:80}, ()=>resetParticle({}));
+function resetParticle(p){
+  p.x=Math.random()*W; p.y=H+10;
+  p.vx=(Math.random()-0.5)*0.6; p.vy=-Math.random()*0.9-0.2;
+  p.r=Math.random()*3+1; p.life=0; p.maxLife=Math.random()*3+2;
+  p.hue=Math.random()*60+240; return p;
+}
+function tickParticles(dt){
+  particles.forEach(p=>{ p.x+=p.vx; p.y+=p.vy; p.life+=dt;
+    if(p.life>p.maxLife||p.y<-10) resetParticle(p); });
+}
+
+// Debris for crumble scene
+const debris = Array.from({length:30}, ()=>resetDebris({}));
+function resetDebris(d){
+  d.x=Math.random()*W; d.y=Math.random()*H*0.7;
+  d.vx=(Math.random()-0.5)*2; d.vy=Math.random()*1.5+0.5;
+  d.rot=Math.random()*Math.PI*2; d.rotV=(Math.random()-0.5)*0.1;
+  d.w=Math.random()*20+8; d.h=Math.random()*12+5;
+  d.hue=Math.random()*40+240; d.life=0; d.maxLife=Math.random()*2+1;
+  return d;
+}
+function tickDebris(dt){
+  debris.forEach(d=>{ d.x+=d.vx; d.y+=d.vy; d.rot+=d.rotV; d.life+=dt;
+    if(d.life>d.maxLife) resetDebris(d); });
+}
+
+// ── Helpers ───────────────────────────────────────────────────────────────────
+const lerp=(a,b,t)=>a+(b-a)*t;
+const clamp=(v,lo,hi)=>Math.max(lo,Math.min(hi,v));
+const easeOut=t=>1-(1-t)*(1-t);
+const easeIn=t=>t*t;
+const easeInOut=t=>t<0.5?2*t*t:1-2*(1-t)*(1-t);
+
+function fadeAlpha(lt, dur, fd=0.55){
+  if(lt<=0||lt>=dur) return 0;
+  if(lt<fd) return easeOut(lt/fd);
+  if(lt>dur-fd) return Math.max(0, easeOut((dur-lt)/fd));
+  return 1;
+}
+
+function getScene(t){
+  let acc=0;
+  for(let i=0;i<SCENES.length;i++){
+    if(t < acc+SCENES[i].dur) return {s:SCENES[i], lt:t-acc, idx:i};
+    acc+=SCENES[i].dur;
+  }
+  const last=SCENES[SCENES.length-1];
+  return {s:last, lt:last.dur, idx:SCENES.length-1};
+}
+
+// ── Backgrounds ───────────────────────────────────────────────────────────────
+function dreamBg(t, a=1, redTint=0){
+  const hue=260+Math.sin(t*0.15)*18;
+  const g=ctx.createLinearGradient(0,0,0,H);
+  g.addColorStop(0,`hsl(${hue},75%,${7*a}%)`);
+  g.addColorStop(0.65,`hsl(${hue+15},65%,${11*a}%)`);
+  g.addColorStop(1,`hsl(${hue+30},50%,${15*a}%)`);
+  ctx.fillStyle=g; ctx.fillRect(0,0,W,H);
+
+  const gg=ctx.createLinearGradient(0,H*0.7,0,H);
+  gg.addColorStop(0,`hsla(${hue+20},45%,18%,${a})`);
+  gg.addColorStop(1,`hsla(${hue+10},35%,8%,${a})`);
+  ctx.fillStyle=gg; ctx.fillRect(0,H*0.7,W,H*0.3);
+
+  stars.forEach(s=>{
+    const tw=0.4+0.6*Math.sin(t*s.spd*2+s.ph);
+    ctx.globalAlpha=tw*0.75*a;
+    ctx.fillStyle='#fff';
+    ctx.beginPath(); ctx.arc(s.x,s.y,s.r,0,Math.PI*2); ctx.fill();
+  });
+  ctx.globalAlpha=1;
+
+  [[110,H*0.61,130,28],[640,H*0.57,110,22],[360,H*0.66,85,18]].forEach(([ix,iy,iw,ih])=>
+    drawIsland(t,ix,iy,iw,ih,a));
+
+  particles.forEach(p=>{
+    const fa=(1-p.life/p.maxLife)*0.55*a;
+    ctx.globalAlpha=Math.max(0,fa);
+    ctx.fillStyle=`hsl(${p.hue},85%,72%)`;
+    ctx.beginPath(); ctx.arc(p.x,p.y,p.r,0,Math.PI*2); ctx.fill();
+  });
+  ctx.globalAlpha=1;
+
+  if(redTint>0){
+    ctx.fillStyle=`rgba(100,0,0,${redTint*0.35})`; ctx.fillRect(0,0,W,H);
+  }
+}
+
+function drawIsland(t,x,y,w,h,a){
+  const bob=Math.sin(t*0.5+x*0.01)*9;
+  ctx.globalAlpha=Math.max(0,a*0.88);
+  const g=ctx.createLinearGradient(x,y+bob-h/2,x,y+bob+h);
+  g.addColorStop(0,'#7555d0'); g.addColorStop(1,'#1a1035');
+  ctx.fillStyle=g;
+  ctx.beginPath(); ctx.ellipse(x,y+bob,w/2,h/2,0,0,Math.PI*2); ctx.fill();
+  ctx.fillStyle='#9070e0';
+  ctx.beginPath(); ctx.ellipse(x,y+bob-h/3,w/2*0.95,h/3,0,0,Math.PI*2); ctx.fill();
+  ctx.globalAlpha=1;
+}
+
+function realBg(t,a=1){
+  const g=ctx.createLinearGradient(0,0,0,H);
+  g.addColorStop(0,`rgba(5,8,25,${a})`);
+  g.addColorStop(1,`rgba(2,4,12,${a})`);
+  ctx.fillStyle=g; ctx.fillRect(0,0,W,H);
+
+  const wx=W*0.74, wy=H*0.08, ww=115, wh=155;
+  const wg=ctx.createLinearGradient(wx,wy,wx,wy+wh);
+  wg.addColorStop(0,`rgba(20,40,90,${0.9*a})`);
+  wg.addColorStop(1,`rgba(10,25,60,${0.9*a})`);
+  ctx.fillStyle=wg; ctx.fillRect(wx,wy,ww,wh);
+
+  const mg=ctx.createRadialGradient(wx+ww/2,wy+wh/2,0,wx+ww/2,wy+wh/2,180);
+  mg.addColorStop(0,`rgba(140,170,255,${0.18*a})`);
+  mg.addColorStop(1,'rgba(0,0,0,0)');
+  ctx.fillStyle=mg; ctx.fillRect(0,0,W,H);
+
+  ctx.save();
+  ctx.strokeStyle=`rgba(50,70,120,${a})`; ctx.lineWidth=4;
+  ctx.strokeRect(wx,wy,ww,wh);
+  ctx.beginPath();
+  ctx.moveTo(wx+ww/2,wy); ctx.lineTo(wx+ww/2,wy+wh);
+  ctx.moveTo(wx,wy+wh/2); ctx.lineTo(wx+ww,wy+wh/2);
+  ctx.stroke(); ctx.restore();
+
+  ctx.fillStyle=`rgba(12,16,32,${0.6*a})`; ctx.fillRect(0,0,W,H*0.78);
+  ctx.fillStyle=`rgba(18,12,8,${a})`; ctx.fillRect(0,H*0.78,W,H*0.22);
+  drawBed(a);
+}
+
+function drawBed(a=1){
+  ctx.globalAlpha=Math.max(0,a);
+  ctx.fillStyle='#3d2a1a'; ctx.fillRect(W*0.08,H*0.56,W*0.56,H*0.24);
+  ctx.fillStyle='#28204a'; ctx.fillRect(W*0.10,H*0.50,W*0.52,H*0.10);
+  ctx.fillStyle='#483d7a';
+  roundRect(W*0.11,H*0.49,85,48,10); ctx.fill();
+  const bg=ctx.createLinearGradient(0,H*0.52,0,H*0.65);
+  bg.addColorStop(0,'#183058'); bg.addColorStop(1,'#0b1525');
+  ctx.fillStyle=bg;
+  roundRect(W*0.10,H*0.51,W*0.52,H*0.13,6); ctx.fill();
+  ctx.globalAlpha=1;
+}
+
+function roundRect(x,y,w,h,r){
+  ctx.beginPath();
+  ctx.moveTo(x+r,y);
+  ctx.lineTo(x+w-r,y); ctx.quadraticCurveTo(x+w,y,x+w,y+r);
+  ctx.lineTo(x+w,y+h-r); ctx.quadraticCurveTo(x+w,y+h,x+w-r,y+h);
+  ctx.lineTo(x+r,y+h); ctx.quadraticCurveTo(x,y+h,x,y+h-r);
+  ctx.lineTo(x,y+r); ctx.quadraticCurveTo(x,y,x+r,y);
+  ctx.closePath();
+}
+
+// ── Daytime real world background ────────────────────────────────────────────
+function realDayBg(t, a=1){
+  // Warm morning sky through window
+  const g=ctx.createLinearGradient(0,0,0,H);
+  g.addColorStop(0,`rgba(30,32,50,${a})`);
+  g.addColorStop(1,`rgba(18,18,28,${a})`);
+  ctx.fillStyle=g; ctx.fillRect(0,0,W,H);
+
+  // Window — daylight
+  const wx=W*0.72, wy=H*0.06, ww=130, wh=165;
+  const dayGrad=ctx.createLinearGradient(wx,wy,wx,wy+wh);
+  dayGrad.addColorStop(0,`rgba(180,200,255,${0.55*a})`);
+  dayGrad.addColorStop(0.5,`rgba(255,230,180,${0.45*a})`);
+  dayGrad.addColorStop(1,`rgba(200,180,140,${0.35*a})`);
+  ctx.fillStyle=dayGrad; ctx.fillRect(wx,wy,ww,wh);
+
+  // Sunlight spill into room
+  const sunSpill=ctx.createRadialGradient(wx+ww/2,wy+wh*0.3,0,wx+ww/2,wy+wh*0.3,260);
+  sunSpill.addColorStop(0,`rgba(255,220,140,${0.12*a})`);
+  sunSpill.addColorStop(1,'rgba(0,0,0,0)');
+  ctx.fillStyle=sunSpill; ctx.fillRect(0,0,W,H);
+
+  // Window frame
+  ctx.save(); ctx.strokeStyle=`rgba(80,70,50,${a})`; ctx.lineWidth=4;
+  ctx.strokeRect(wx,wy,ww,wh);
+  ctx.beginPath();
+  ctx.moveTo(wx+ww/2,wy); ctx.lineTo(wx+ww/2,wy+wh);
+  ctx.moveTo(wx,wy+wh/2); ctx.lineTo(wx+ww,wy+wh/2);
+  ctx.stroke(); ctx.restore();
+
+  // Walls — slightly warm
+  ctx.fillStyle=`rgba(22,20,30,${0.65*a})`; ctx.fillRect(0,0,W,H*0.78);
+  ctx.fillStyle=`rgba(25,20,15,${a})`; ctx.fillRect(0,H*0.78,W,H*0.22);
+
+  // Table
+  ctx.save(); ctx.globalAlpha=a;
+  ctx.fillStyle='#2a1e10'; ctx.fillRect(W*0.08,H*0.62,W*0.55,H*0.06);
+  ctx.fillStyle='#1e1508'; ctx.fillRect(W*0.12,H*0.68,8,H*0.12);
+  ctx.fillRect(W*0.55,H*0.68,8,H*0.12);
+
+  // Coffee mug on table
+  ctx.fillStyle='#5a3820'; ctx.fillRect(W*0.46,H*0.54,22,28);
+  ctx.fillStyle='#3a2010'; ctx.fillRect(W*0.46,H*0.54,22,5);
+  // Steam
+  const st=(t%1.5)/1.5;
+  ctx.strokeStyle=`rgba(200,200,220,${(1-st)*0.4*a})`; ctx.lineWidth=1.5; ctx.lineCap='round';
+  ctx.beginPath(); ctx.moveTo(W*0.46+8,H*0.54-2); ctx.quadraticCurveTo(W*0.46+4,H*0.54-12-st*8,W*0.46+10,H*0.54-20-st*8); ctx.stroke();
+  ctx.beginPath(); ctx.moveTo(W*0.46+14,H*0.54-2); ctx.quadraticCurveTo(W*0.46+18,H*0.54-12-st*8,W*0.46+12,H*0.54-20-st*8); ctx.stroke();
+  ctx.restore();
+}
+
+// ── Dream-self floating unconscious ──────────────────────────────────────────
+function dreamSelfAsleep(t, a=1){
+  // Small inset box in top-left corner showing dream world with him floating
+  const ix=20, iy=55, iw=190, ih=110;
+  ctx.save(); ctx.globalAlpha=Math.max(0,a);
+
+  // Inset background
+  ctx.fillStyle='rgba(10,5,30,0.85)'; roundRect(ix,iy,iw,ih,8); ctx.fill();
+  ctx.strokeStyle='rgba(120,90,200,0.5)'; ctx.lineWidth=1.5;
+  roundRect(ix,iy,iw,ih,8); ctx.stroke();
+
+  // Mini dream sky
+  const dg=ctx.createLinearGradient(ix,iy,ix,iy+ih);
+  dg.addColorStop(0,'rgba(30,10,60,0.9)'); dg.addColorStop(1,'rgba(15,5,35,0.9)');
+  ctx.fillStyle=dg; roundRect(ix,iy,iw,ih,8); ctx.fill();
+
+  // Few mini stars
+  for(let i=0;i<20;i++){
+    const sx=ix+10+Math.sin(i*1.7)*70+70;
+    const sy=iy+10+Math.cos(i*2.3)*30+30;
+    ctx.globalAlpha=Math.max(0,a*(0.4+0.3*Math.sin(t*1.2+i)));
+    ctx.fillStyle='#fff';
+    ctx.beginPath(); ctx.arc(sx,sy,0.8,0,Math.PI*2); ctx.fill();
+  }
+
+  // Floating figure — horizontal, gently bobbing
+  const bob=Math.sin(t*0.8)*5;
+  const cx=ix+iw/2, cy=iy+ih*0.55+bob;
+  ctx.globalAlpha=Math.max(0,a*0.95);
+  // Body
+  ctx.fillStyle='#3d5f96'; ctx.fillRect(cx-22,cy-6,44,12);
+  // Head
+  ctx.fillStyle='#e8c070'; ctx.beginPath(); ctx.arc(cx-28,cy,9,0,Math.PI*2); ctx.fill();
+  // Legs
+  ctx.fillStyle='#243550'; ctx.fillRect(cx+22,cy-5,22,5); ctx.fillRect(cx+22,cy+1,22,5);
+  // Closed eyes
+  ctx.strokeStyle='#5a3a10'; ctx.lineWidth=1;
+  ctx.beginPath(); ctx.arc(cx-31,cy,3,0,Math.PI); ctx.stroke();
+  ctx.beginPath(); ctx.arc(cx-25,cy,3,0,Math.PI); ctx.stroke();
+  // Glow
+  const fg=ctx.createRadialGradient(cx,cy,0,cx,cy,35);
+  fg.addColorStop(0,'rgba(100,80,200,0.2)'); fg.addColorStop(1,'rgba(0,0,0,0)');
+  ctx.fillStyle=fg; ctx.fillRect(ix,iy,iw,ih);
+
+  ctx.globalAlpha=Math.max(0,a);
+  // Label
+  ctx.font='10px Georgia'; ctx.fillStyle='rgba(180,160,255,0.7)'; ctx.textAlign='center';
+  ctx.fillText('dream world', ix+iw/2, iy+ih-6);
+
+  ctx.restore();
+}
+
+// ── Draw shadow entity ────────────────────────────────────────────────────────
+function drawShadow(x,y,size,a,t){
+  ctx.save(); ctx.globalAlpha=Math.max(0,a);
+  const sg=ctx.createRadialGradient(x,y,0,x,y,size*1.8);
+  sg.addColorStop(0,'rgba(8,0,15,0.95)');
+  sg.addColorStop(0.4,'rgba(60,0,30,0.6)');
+  sg.addColorStop(1,'rgba(0,0,0,0)');
+  ctx.fillStyle=sg;
+  ctx.beginPath(); ctx.ellipse(x,y,size,size*1.5,0,0,Math.PI*2); ctx.fill();
+  // eyes
+  const ey=y-size*0.35;
+  ctx.fillStyle='rgba(255,20,20,0.9)';
+  ctx.shadowColor='#ff0000'; ctx.shadowBlur=12;
+  ctx.beginPath(); ctx.ellipse(x-size*0.22,ey,size*0.09,size*0.06,0,0,Math.PI*2); ctx.fill();
+  ctx.beginPath(); ctx.ellipse(x+size*0.22,ey,size*0.09,size*0.06,0,0,Math.PI*2); ctx.fill();
+  ctx.restore();
+}
+
+// ── Draw person ───────────────────────────────────────────────────────────────
+function person(x,y,scale,mood,t,sleeping=false){
+  ctx.save(); ctx.translate(x,y); ctx.scale(scale,scale);
+  const skin='#e8c070', cloth='#3d5f96', pants='#243550';
+
+  if(sleeping){
+    ctx.save(); ctx.rotate(-0.12);
+    ctx.fillStyle=skin; ctx.beginPath(); ctx.arc(-95,-2,17,0,Math.PI*2); ctx.fill();
+    ctx.fillStyle=cloth; ctx.fillRect(-80,-12,70,20);
+    ctx.fillStyle=pants; ctx.fillRect(-10,-10,75,10); ctx.fillRect(-10,0,75,10);
+    ctx.strokeStyle='#5a3a10'; ctx.lineWidth=2;
+    ctx.beginPath(); ctx.arc(-100,-4,5,0,Math.PI); ctx.stroke();
+    ctx.beginPath(); ctx.arc(-90,-4,5,0,Math.PI); ctx.stroke();
+    const zp=(t%2.5)/2.5;
+    ctx.fillStyle='rgba(180,180,255,0.9)'; ctx.font='bold 16px Georgia';
+    ctx.globalAlpha=Math.max(0,0.9-zp*0.5);
+    ctx.fillText('z',-75,-30-zp*18);
+    ctx.font='bold 11px Georgia'; ctx.globalAlpha=Math.max(0,0.7-zp*0.4);
+    ctx.fillText('z',-62,-45-zp*12);
+    ctx.globalAlpha=1;
+    ctx.restore(); ctx.restore(); return;
+  }
+
+  const wk=Math.sin(t*2.2)*14;
+  ctx.strokeStyle=pants; ctx.lineWidth=9; ctx.lineCap='round';
+  ctx.beginPath(); ctx.moveTo(-5,10); ctx.lineTo(-9-wk,42); ctx.stroke();
+  ctx.beginPath(); ctx.moveTo(5,10);  ctx.lineTo(9+wk,42);  ctx.stroke();
+
+  ctx.fillStyle=cloth; ctx.fillRect(-13,-28,26,40);
+
+  ctx.strokeStyle=cloth; ctx.lineWidth=8;
+  if(mood==='confused'){
+    const as=Math.sin(t*2.5)*18;
+    ctx.beginPath(); ctx.moveTo(-13,-18); ctx.lineTo(-28,-36+as); ctx.stroke();
+    ctx.beginPath(); ctx.moveTo(13,-18);  ctx.lineTo(30,-10+as*0.5); ctx.stroke();
+  } else if(mood==='reaching'){
+    ctx.beginPath(); ctx.moveTo(-13,-18); ctx.lineTo(-6,-48); ctx.stroke();
+    ctx.beginPath(); ctx.moveTo(13,-18);  ctx.lineTo(32,-44); ctx.stroke();
+  } else if(mood==='run'){
+    const rs=Math.sin(t*4)*20;
+    ctx.beginPath(); ctx.moveTo(-13,-18); ctx.lineTo(-30,-5+rs); ctx.stroke();
+    ctx.beginPath(); ctx.moveTo(13,-18);  ctx.lineTo(28,-30-rs*0.5); ctx.stroke();
+  } else if(mood==='cower'){
+    ctx.beginPath(); ctx.moveTo(-13,-18); ctx.lineTo(-25,-8); ctx.stroke();
+    ctx.beginPath(); ctx.moveTo(13,-18);  ctx.lineTo(25,-8); ctx.stroke();
+  } else if(mood==='resolve'){
+    ctx.beginPath(); ctx.moveTo(-13,-18); ctx.lineTo(-20,5); ctx.stroke();
+    ctx.beginPath(); ctx.moveTo(13,-18);  ctx.lineTo(20,5);  ctx.stroke();
+  } else if(mood==='power'){
+    ctx.beginPath(); ctx.moveTo(-13,-18); ctx.lineTo(-32,-30); ctx.stroke();
+    ctx.beginPath(); ctx.moveTo(13,-18);  ctx.lineTo(32,-30); ctx.stroke();
+  } else {
+    const sw=Math.sin(t*1.8)*12;
+    ctx.beginPath(); ctx.moveTo(-13,-18); ctx.lineTo(-24,8+sw); ctx.stroke();
+    ctx.beginPath(); ctx.moveTo(13,-18);  ctx.lineTo(24,8-sw);  ctx.stroke();
+  }
+
+  ctx.fillStyle=skin; ctx.beginPath(); ctx.arc(0,-44,18,0,Math.PI*2); ctx.fill();
+
+  ctx.fillStyle='#1a1025';
+  if(mood==='confused'||mood==='cower'){
+    ctx.beginPath(); ctx.arc(-7,-46,4.5,0,Math.PI*2); ctx.fill();
+    ctx.beginPath(); ctx.arc(7,-46,4.5,0,Math.PI*2);  ctx.fill();
+    ctx.strokeStyle='#5a3010'; ctx.lineWidth=2.2;
+    ctx.beginPath(); ctx.moveTo(-12,-53); ctx.lineTo(-3,-55); ctx.stroke();
+    ctx.beginPath(); ctx.moveTo(12,-53);  ctx.lineTo(3,-55);  ctx.stroke();
+  } else if(mood==='power'||mood==='resolve'){
+    ctx.beginPath(); ctx.arc(-7,-46,3.5,0,Math.PI*2); ctx.fill();
+    ctx.beginPath(); ctx.arc(7,-46,3.5,0,Math.PI*2);  ctx.fill();
+    ctx.strokeStyle='#3a2000'; ctx.lineWidth=2.5;
+    ctx.beginPath(); ctx.moveTo(-12,-53); ctx.lineTo(-3,-51); ctx.stroke();
+    ctx.beginPath(); ctx.moveTo(12,-53);  ctx.lineTo(3,-51);  ctx.stroke();
+  } else if(mood==='run'){
+    ctx.beginPath(); ctx.arc(-7,-46,4,0,Math.PI*2); ctx.fill();
+    ctx.beginPath(); ctx.arc(7,-46,4,0,Math.PI*2);   ctx.fill();
+  } else {
+    ctx.beginPath(); ctx.arc(-7,-46,3.5,0,Math.PI*2); ctx.fill();
+    ctx.beginPath(); ctx.arc(7,-46,3.5,0,Math.PI*2);  ctx.fill();
+  }
+  ctx.restore();
+}
+
+// ── Text helpers ──────────────────────────────────────────────────────────────
+function drawText(txt,y,sz,col,a,bold=true){
+  a=Math.max(0,Math.min(1,a||0));
+  ctx.save(); ctx.globalAlpha=a; ctx.textAlign='center';
+  ctx.font=`${bold?'bold ':''}${sz}px Georgia, serif`;
+  ctx.fillStyle='rgba(0,0,0,0.8)'; ctx.fillText(txt,W/2+2,y+2);
+  ctx.fillStyle=col; ctx.fillText(txt,W/2,y);
+  ctx.restore();
+}
+function sub(txt,a){ drawText(txt,H-62,21,'#ded0ff',a); }
+function sub2(txt,a){ drawText(txt,H-36,19,'#c0a8e8',a); }
+function bigText(txt,y,a,col='#fff',sz=54){ drawText(txt,y,sz,col,a); }
+
+function letterbox(){
+  ctx.fillStyle='#000';
+  ctx.fillRect(0,0,W,44);
+  ctx.fillRect(0,H-44,W,44);
+}
+
+// ── Scene render ──────────────────────────────────────────────────────────────
+function render(t){
+  const {s,lt}=getScene(t);
+  const a=fadeAlpha(lt,s.dur,0.65);
+  ctx.clearRect(0,0,W,H);
+
+  switch(s.id){
+
+    // ── TITLE ──────────────────────────────────────────────────────────────
+    case 'title':{
+      ctx.fillStyle='#000'; ctx.fillRect(0,0,W,H);
+      const ng=ctx.createRadialGradient(W/2,H/2,0,W/2,H/2,320);
+      ng.addColorStop(0,`rgba(50,20,80,${0.45*a})`);
+      ng.addColorStop(1,'rgba(0,0,0,0)');
+      ctx.fillStyle=ng; ctx.fillRect(0,0,W,H);
+      stars.forEach(s2=>{
+        ctx.globalAlpha=a*0.6*(0.5+0.5*Math.sin(t*s2.spd+s2.ph));
+        ctx.fillStyle='#fff';
+        ctx.beginPath(); ctx.arc(s2.x,s2.y*0.9+H*0.05,s2.r*0.7,0,Math.PI*2); ctx.fill();
+      }); ctx.globalAlpha=1;
+      bigText('BETWEEN WORLDS',H/2-16,a,'#c8aeff');
+      drawText('A story of two realities',H/2+44,20,'#7060a0',a*0.75,false);
+      break;
+    }
+
+    // ── DREAM 1: Confused ──────────────────────────────────────────────────
+    case 'dream1':{
+      dreamBg(t,a);
+      const wx=lerp(W*0.18,W*0.52,lt/s.dur);
+      person(wx,H*0.68,1.1,'confused',t);
+      if(lt>1.2){
+        const qa=fadeAlpha(lt-1.2,s.dur-1.2,0.3)*a;
+        ctx.save(); ctx.globalAlpha=Math.max(0,qa);
+        ctx.font='bold 32px Georgia'; ctx.fillStyle='#c0a0ff';
+        ctx.textAlign='center';
+        ctx.fillText('?',wx+38,H*0.52);
+        ctx.fillText('?',wx-42,H*0.50);
+        ctx.restore();
+      }
+      sub('In the dream world... he is AWAKE', fadeAlpha(lt-0.6,s.dur-0.8,0.4)*a);
+      letterbox(); break;
+    }
+
+    // ── DREAM 2: Can't control ─────────────────────────────────────────────
+    case 'dream2':{
+      dreamBg(t,a);
+      person(W*0.38,H*0.68,1.1,'reaching',t);
+      const ox=W*0.56+lt*26, oy=H*0.44-Math.sin(lt*1.2)*22;
+      ctx.save(); ctx.globalAlpha=Math.max(0,a*0.9);
+      const og=ctx.createRadialGradient(ox,oy,0,ox,oy,22);
+      og.addColorStop(0,'#ffe080'); og.addColorStop(1,'rgba(255,160,0,0)');
+      ctx.fillStyle=og; ctx.beginPath(); ctx.arc(ox,oy,22,0,Math.PI*2); ctx.fill();
+      ctx.fillStyle='#ffd060'; ctx.shadowColor='#ffa020'; ctx.shadowBlur=20;
+      ctx.beginPath(); ctx.arc(ox,oy,11,0,Math.PI*2); ctx.fill();
+      ctx.restore();
+      sub('But he cannot control it...', fadeAlpha(lt-0.6,s.dur-0.8,0.4)*a);
+      letterbox(); break;
+    }
+
+    // ── CRUMBLE: Dream turns hostile ───────────────────────────────────────
+    case 'crumble':{
+      const shake=lt>2 ? Math.sin(t*25)*(lt-2)*3 : 0;
+      ctx.save(); ctx.translate(shake, shake*0.5);
+      dreamBg(t, a, clamp((lt-1.5)/2,0,1));
+      // Crack lines in the sky
+      if(lt>1.5){
+        const ca=clamp((lt-1.5)/1.5,0,1)*a;
+        ctx.save(); ctx.globalAlpha=Math.max(0,ca); ctx.strokeStyle='#ff4040'; ctx.lineWidth=2;
+        [[W*0.3,0,W*0.2,H*0.35],[W*0.6,H*0.1,W*0.75,H*0.5],[W*0.1,H*0.2,W*0.4,H*0.6]].forEach(([x1,y1,x2,y2])=>{
+          ctx.beginPath(); ctx.moveTo(x1,y1); ctx.lineTo(x2,y2); ctx.stroke();
+        }); ctx.restore();
+      }
+      // Falling debris
+      if(lt>2){
+        const da=clamp((lt-2)/1,0,1)*a;
+        debris.forEach(d=>{
+          const fa=(1-d.life/d.maxLife)*da*0.8;
+          ctx.save(); ctx.globalAlpha=Math.max(0,fa);
+          ctx.translate(d.x,d.y); ctx.rotate(d.rot);
+          ctx.fillStyle=`hsl(${d.hue},60%,40%)`;
+          ctx.fillRect(-d.w/2,-d.h/2,d.w,d.h);
+          ctx.restore();
+        });
+      }
+      // Man on knees
+      const kx=W*0.42, ky=H*0.72;
+      person(kx, ky, 1.1, lt>3?'cower':'confused', t);
+      ctx.restore();
+      if(lt<3) sub('The dream turns against him...',fadeAlpha(lt-0.5,2.5,0.4)*a);
+      else sub('He has no control. He has no escape.',fadeAlpha(lt-3,s.dur-3,0.4)*a);
+      letterbox(); break;
+    }
+
+    // ── REAL 1: Asleep ─────────────────────────────────────────────────────
+    case 'real1':{
+      realBg(t,a);
+      ctx.save(); ctx.translate(W*0.26,H*0.545);
+      person(0,0,1.05,'neutral',t,true);
+      ctx.restore();
+      sub('In the real world... he is ASLEEP', fadeAlpha(lt-0.6,s.dur-0.8,0.4)*a);
+      letterbox(); break;
+    }
+
+    // ── REAL AWAKE: He's awake, dream-self unconscious ────────────────────
+    case 'realawake':{
+      realDayBg(t,a);
+      // Him sitting at table, awake but exhausted
+      ctx.save(); ctx.translate(W*0.32, H*0.595);
+      // Chair back
+      ctx.fillStyle='#1e1408'; ctx.fillRect(-18,-55,6,55); ctx.fillRect(18,-55,6,55);
+      ctx.fillRect(-18,-55,42,8);
+      person(0,0,1.05,'neutral',t);
+      ctx.restore();
+      // Tired eyes — dark circles overlay
+      ctx.save(); ctx.globalAlpha=a*0.35;
+      ctx.fillStyle='rgba(0,0,30,0.6)';
+      ctx.beginPath(); ctx.ellipse(W*0.32-7,H*0.485,5,3,0,0,Math.PI*2); ctx.fill();
+      ctx.beginPath(); ctx.ellipse(W*0.32+7,H*0.485,5,3,0,0,Math.PI*2); ctx.fill();
+      ctx.restore();
+      // Inset: dream self unconscious
+      dreamSelfAsleep(t, fadeAlpha(lt-1,s.dur-1,0.5)*a);
+      if(lt<3.5) sub('When he\'s awake in the real world...',fadeAlpha(lt-0.5,3,0.4)*a);
+      else        sub('He\'s unconscious in the dream.',    fadeAlpha(lt-3.5,s.dur-3.5,0.4)*a);
+      letterbox(); break;
+    }
+
+    // ── HAUNTED: Dream bleeds into real ───────────────────────────────────
+    case 'haunted':{
+      realDayBg(t,a);
+      // Him standing, looking at his hands
+      const hx=W*0.38+Math.sin(t*0.4)*4;
+      person(hx, H*0.68, 1.05, 'reaching', t);
+      // Dream-world ghost overlay — translucent purple streaks
+      const flash=Math.max(0,Math.sin(t*4.5)*0.5+0.1);
+      if(flash>0){
+        ctx.save(); ctx.globalAlpha=Math.max(0,flash*a*0.45);
+        // Ghost islands bleeding through
+        drawIsland(t,200,H*0.5,100,22,1);
+        drawIsland(t,560,H*0.45,80,18,1);
+        // Purple tint flare
+        ctx.fillStyle='rgba(80,40,160,0.25)'; ctx.fillRect(0,0,W,H);
+        ctx.restore();
+      }
+      // Faint dream stars showing through walls
+      stars.forEach(s2=>{
+        ctx.globalAlpha=Math.max(0,a*0.18*(0.5+0.5*Math.sin(t*s2.spd+s2.ph)));
+        ctx.fillStyle='#c0a0ff';
+        ctx.beginPath(); ctx.arc(s2.x,s2.y*0.85+H*0.05,s2.r*0.5,0,Math.PI*2); ctx.fill();
+      }); ctx.globalAlpha=1;
+      dreamSelfAsleep(t, a*0.7);
+      if(lt<3) sub('He tries to live normally...',fadeAlpha(lt-0.4,2.6,0.4)*a);
+      else     sub('But the dream bleeds through.',fadeAlpha(lt-3,s.dur-3,0.4)*a);
+      letterbox(); break;
+    }
+
+    // ── DOZE: Falling asleep, crossing over ───────────────────────────────
+    case 'doze':{
+      const cross=clamp((lt-3.5)/1.8,0,1);
+      // Fade from day room to purple dream
+      realDayBg(t, a*(1-cross*0.9));
+      if(cross>0){
+        ctx.save(); ctx.globalAlpha=Math.max(0,cross*a*0.85);
+        dreamBg(t,1);
+        ctx.restore();
+      }
+      // Him at table, head drooping
+      ctx.save(); ctx.translate(W*0.35, H*0.6);
+      const droopAngle=clamp(lt/3.5,0,1)*0.55; // head falling forward
+      // Table surface
+      ctx.fillStyle='#2a1e10'; ctx.fillRect(-60,10,120,12);
+      // Person with drooping pose
+      ctx.save(); ctx.rotate(droopAngle*0.1);
+      const sk='#e8c070', cl='#3d5f96', pa='#243550';
+      // Legs
+      ctx.strokeStyle=pa; ctx.lineWidth=9; ctx.lineCap='round';
+      ctx.beginPath(); ctx.moveTo(-5,10); ctx.lineTo(-10,42); ctx.stroke();
+      ctx.beginPath(); ctx.moveTo(5,10);  ctx.lineTo(10,42);  ctx.stroke();
+      // Torso
+      ctx.fillStyle=cl; ctx.fillRect(-13,-28,26,40);
+      // Arms resting on table — folded
+      ctx.strokeStyle=cl; ctx.lineWidth=8;
+      ctx.beginPath(); ctx.moveTo(-13,-18); ctx.lineTo(-35,12); ctx.stroke();
+      ctx.beginPath(); ctx.moveTo(13,-18);  ctx.lineTo(35,12);  ctx.stroke();
+      // Head drooping forward onto arms
+      ctx.save(); ctx.translate(0,-44+droopAngle*38); ctx.rotate(droopAngle*0.9);
+      ctx.fillStyle=sk; ctx.beginPath(); ctx.arc(0,0,18,0,Math.PI*2); ctx.fill();
+      // Closing eyes
+      const eyeClose=clamp(lt/3.5,0,1);
+      ctx.strokeStyle='#5a3a10'; ctx.lineWidth=2;
+      ctx.beginPath(); ctx.arc(-7,-2,4,Math.PI*(1-eyeClose*0.5),Math.PI*eyeClose*0.5); ctx.stroke();
+      ctx.beginPath(); ctx.arc(7,-2,4,Math.PI*(1-eyeClose*0.5),Math.PI*eyeClose*0.5); ctx.stroke();
+      ctx.restore();
+      ctx.restore();
+      ctx.restore();
+      // Dream particles starting to appear as he crosses over
+      if(cross>0.2){
+        particles.forEach(p=>{
+          const fa=(1-p.life/p.maxLife)*cross*a*0.6;
+          ctx.globalAlpha=Math.max(0,fa);
+          ctx.fillStyle=`hsl(${p.hue},85%,72%)`;
+          ctx.beginPath(); ctx.arc(p.x,p.y,p.r,0,Math.PI*2); ctx.fill();
+        }); ctx.globalAlpha=1;
+      }
+      if(lt<3) sub('He tries to stay awake...',fadeAlpha(lt-0.4,2.6,0.4)*a);
+      else if(lt<4.5) sub('He can\'t.',fadeAlpha(lt-3,1.5,0.5)*a);
+      else sub('And he\'s back.',fadeAlpha(lt-4.5,s.dur-4.5,0.4)*a);
+      letterbox(); break;
+    }
+
+    // ── WATCHER: Someone at the door ───────────────────────────────────────
+    case 'watcher':{
+      realBg(t,a);
+      ctx.save(); ctx.translate(W*0.26,H*0.545);
+      person(0,0,1.05,'neutral',t,true);
+      ctx.restore();
+      // Door with figure
+      const doorX=W*0.01, doorY=H*0.2, doorW=55, doorH=H*0.58;
+      ctx.save(); ctx.globalAlpha=a*0.9;
+      ctx.fillStyle='#1a0f08'; ctx.fillRect(doorX,doorY,doorW,doorH);
+      ctx.strokeStyle='#3a2510'; ctx.lineWidth=3; ctx.strokeRect(doorX,doorY,doorW,doorH);
+      ctx.restore();
+      if(lt>1.5){
+        const wa=clamp((lt-1.5)/1.2,0,1)*a;
+        // Watcher silhouette in doorway
+        ctx.save(); ctx.globalAlpha=Math.max(0,wa*0.85);
+        ctx.fillStyle='#080408';
+        ctx.beginPath(); ctx.ellipse(doorX+doorW/2,doorY+22,13,14,0,0,Math.PI*2); ctx.fill();
+        ctx.fillRect(doorX+doorW/2-10, doorY+36, 20, 35);
+        // Glowing eyes
+        ctx.fillStyle='rgba(255,180,0,0.7)'; ctx.shadowColor='#ffaa00'; ctx.shadowBlur=8;
+        ctx.beginPath(); ctx.ellipse(doorX+doorW/2-5,doorY+18,2.5,2,0,0,Math.PI*2); ctx.fill();
+        ctx.beginPath(); ctx.ellipse(doorX+doorW/2+5,doorY+18,2.5,2,0,0,Math.PI*2); ctx.fill();
+        ctx.restore();
+      }
+      if(lt<3) sub('While he sleeps... the real world moves on.',fadeAlpha(lt-0.5,2.5,0.4)*a);
+      else sub('Something is watching.',fadeAlpha(lt-3,s.dur-3,0.4)*a);
+      letterbox(); break;
+    }
+
+    // ── REAL 2: Dies in real, wakes in dream ──────────────────────────────
+    case 'real2':{
+      realBg(t,a);
+      ctx.save(); ctx.translate(W*0.26,H*0.545);
+      person(0,0,1.05,'neutral',t,true);
+      ctx.restore();
+      if(lt>1.5){
+        const da=clamp((lt-1.5)/1.0,0,1)*a*0.7;
+        ctx.save(); ctx.globalAlpha=Math.max(0,da);
+        const sg=ctx.createRadialGradient(W*0.84,H*0.65,5,W*0.84,H*0.65,90);
+        sg.addColorStop(0,'rgba(5,0,10,0.95)'); sg.addColorStop(1,'rgba(0,0,0,0)');
+        ctx.fillStyle=sg;
+        ctx.beginPath(); ctx.ellipse(W*0.84,H*0.66,28,68,0,0,Math.PI*2); ctx.fill();
+        ctx.beginPath(); ctx.ellipse(W*0.84,H*0.52,22,22,0,0,Math.PI*2); ctx.fill();
+        ctx.restore();
+      }
+      if(lt>4.2){
+        const fl=clamp((lt-4.2)/0.7,0,1);
+        ctx.fillStyle=`rgba(160,130,255,${fl*0.7*a})`; ctx.fillRect(0,0,W,H);
+      }
+      if(lt<3.2) sub('If he dies in the real world...',fadeAlpha(lt-0.4,2.8,0.4)*a);
+      else sub('He wakes up in the dream.',fadeAlpha(lt-3.2,s.dur-3.2,0.4)*a);
+      letterbox(); break;
+    }
+
+    // ── DREAD: Shadow appears ──────────────────────────────────────────────
+    case 'dread':{
+      dreamBg(t,a,0.25);
+      const sz=60+Math.sin(t*2)*10;
+      drawShadow(W*0.72, H*0.52, sz, a*0.9, t);
+      person(W*0.28,H*0.68,1.1,'confused',t);
+      sub('But if he dies in the dream world...',fadeAlpha(lt-0.4,s.dur-0.4,0.4)*a);
+      letterbox(); break;
+    }
+
+    // ── RUN: He flees ─────────────────────────────────────────────────────
+    case 'run':{
+      dreamBg(t,a,0.3+Math.sin(t*3)*0.1);
+      // He runs left to right, shadow chases
+      const rx=lerp(W*0.1,W*0.75,easeIn(lt/s.dur));
+      const sx=lerp(-80,W*0.55,easeIn(lt/s.dur));
+      drawShadow(sx,H*0.55,55+Math.sin(t*3)*8,a*0.85,t);
+      person(rx,H*0.68,1.1,'run',t);
+      // Motion blur lines
+      ctx.save(); ctx.globalAlpha=a*0.3;
+      for(let i=1;i<=4;i++){
+        ctx.fillStyle='rgba(100,80,180,0.15)';
+        ctx.fillRect(0,H*0.5,rx-20-i*12,8);
+      }
+      ctx.restore();
+      sub('He runs... but the dream has no exits.',fadeAlpha(lt-0.4,s.dur-0.4,0.4)*a);
+      letterbox(); break;
+    }
+
+    // ── TRAP: Cornered ────────────────────────────────────────────────────
+    case 'trap':{
+      dreamBg(t,a,clamp(lt/2,0,0.6));
+      const sz2=50+lt*8+Math.sin(t*2)*10;
+      drawShadow(lerp(W*0.8,W*0.65,clamp(lt/s.dur,0,1)), H*0.52, sz2, a*0.9, t);
+      // Wall on right
+      ctx.save(); ctx.globalAlpha=a*0.7;
+      ctx.fillStyle='#1a0a2a';
+      ctx.fillRect(W*0.86,0,W*0.14,H); ctx.restore();
+      person(lerp(W*0.7,W*0.82,clamp(lt/s.dur,0,1)), H*0.68, 1.1, 'cower', t);
+      // Vignette
+      const vg=ctx.createRadialGradient(W/2,H/2,100,W/2,H/2,W*0.7);
+      vg.addColorStop(0,'rgba(0,0,0,0)'); vg.addColorStop(1,`rgba(0,0,0,${0.6*a})`);
+      ctx.fillStyle=vg; ctx.fillRect(0,0,W,H);
+      sub('Cornered in his own mind...',fadeAlpha(lt-0.4,s.dur-0.4,0.4)*a);
+      letterbox(); break;
+    }
+
+    // ── FINAL: It's final ─────────────────────────────────────────────────
+    case 'final':{
+      ctx.fillStyle='#000'; ctx.fillRect(0,0,W,H);
+      const rp=0.28+0.18*Math.sin(t*3.5);
+      ctx.fillStyle=`rgba(120,0,0,${rp*a})`; ctx.fillRect(0,0,W,H);
+      bigText("It's FINAL.",H/2-14,a,'#ff3535',66);
+      drawText('No escape. No second chance.',H/2+52,22,'#cc7070',a*0.85,false);
+      break;
+    }
+
+    // ── RESOLVE: The decision ─────────────────────────────────────────────
+    case 'resolve':{
+      ctx.fillStyle='#050010'; ctx.fillRect(0,0,W,H);
+      // Dark dream with tiny spark of light
+      const spark=clamp((lt-1)/2,0,1);
+      stars.forEach(s2=>{
+        ctx.globalAlpha=a*0.3*(0.5+0.5*Math.sin(t*s2.spd+s2.ph));
+        ctx.fillStyle='#fff';
+        ctx.beginPath(); ctx.arc(s2.x,s2.y*0.85+H*0.08,s2.r*0.5,0,Math.PI*2); ctx.fill();
+      }); ctx.globalAlpha=1;
+      person(W*0.45,H*0.68,1.1,'resolve',t);
+      // Chest spark
+      if(lt>1){
+        const cg=ctx.createRadialGradient(W*0.45,H*0.59,0,W*0.45,H*0.59,spark*60);
+        cg.addColorStop(0,`rgba(180,150,255,${spark*0.9*a})`);
+        cg.addColorStop(1,'rgba(0,0,0,0)');
+        ctx.fillStyle=cg; ctx.fillRect(0,0,W,H);
+      }
+      if(lt<2.5) sub('There is only one way out.',fadeAlpha(lt-0.5,2,0.4)*a);
+      else sub('Learn to control the dream.',fadeAlpha(lt-2.5,s.dur-2.5,0.4)*a);
+      letterbox(); break;
+    }
+
+    // ── LEARN: First attempts ─────────────────────────────────────────────
+    case 'learn':{
+      dreamBg(t,a);
+      person(W*0.45,H*0.68,1.1,'reaching',t);
+      const prog=clamp(lt/s.dur,0,1);
+      for(let i=0;i<10;i++){
+        const ang=(i/10)*Math.PI*2+t*0.9;
+        const rad=70+prog*55;
+        const ex=W*0.45+Math.cos(ang)*rad;
+        const ey=H*0.53+Math.sin(ang)*rad*0.45;
+        ctx.save(); ctx.globalAlpha=Math.max(0,a*prog*0.8);
+        ctx.fillStyle=`hsl(${270+i*22},85%,72%)`;
+        ctx.shadowColor=`hsl(${270+i*22},85%,72%)`; ctx.shadowBlur=12;
+        ctx.beginPath(); ctx.arc(ex,ey,4+i*0.4,0,Math.PI*2); ctx.fill();
+        ctx.restore();
+      }
+      sub('He focuses his mind on the dream...',fadeAlpha(lt-0.5,s.dur-0.8,0.4)*a);
+      letterbox(); break;
+    }
+
+    // ── FIRST WIN: A rock lifts ───────────────────────────────────────────
+    case 'firstwin':{
+      dreamBg(t,a);
+      person(W*0.4,H*0.68,1.1,'reaching',t);
+      // A rock lifts from the ground
+      const lift=clamp((lt-0.8)/1.5,0,1);
+      const rockY=lerp(H*0.73,H*0.52,easeOut(lift));
+      ctx.save(); ctx.globalAlpha=Math.max(0,a*clamp(lt/0.8,0,1));
+      ctx.fillStyle='#8060c0';
+      ctx.shadowColor='#c0a0ff'; ctx.shadowBlur=lift*20;
+      ctx.beginPath(); ctx.ellipse(W*0.58,rockY,14,10,0,0,Math.PI*2); ctx.fill();
+      ctx.restore();
+      // Amazed expression text
+      if(lt>2){
+        const ea=fadeAlpha(lt-2,s.dur-2,0.4)*a;
+        ctx.save(); ctx.globalAlpha=Math.max(0,ea);
+        ctx.font='bold 22px Georgia'; ctx.fillStyle='#ffd070'; ctx.textAlign='center';
+        ctx.fillText('!',W*0.4+32,H*0.48);
+        ctx.restore();
+      }
+      sub('The dream... responded.',fadeAlpha(lt-1.5,s.dur-1.5,0.4)*a);
+      letterbox(); break;
+    }
+
+    // ── TRAINING: Montage ─────────────────────────────────────────────────
+    case 'training':{
+      // Shifts hue as training progresses
+      const prog=clamp(lt/s.dur,0,1);
+      dreamBg(t,a);
+      person(W*0.45,H*0.68,1.1,'power',t);
+      // Growing ring of controlled elements
+      const count=Math.round(4+prog*14);
+      for(let i=0;i<count;i++){
+        const ang=(i/count)*Math.PI*2+t*(0.6+prog*1.2);
+        const rad=50+prog*80;
+        const ex=W*0.45+Math.cos(ang)*rad;
+        const ey=H*0.52+Math.sin(ang)*rad*0.4;
+        const sz=3+prog*4;
+        ctx.save(); ctx.globalAlpha=Math.max(0,a*0.85);
+        ctx.fillStyle=`hsl(${260+i*(360/count)},88%,70%)`;
+        ctx.shadowColor=`hsl(${260+i*(360/count)},88%,70%)`; ctx.shadowBlur=10+prog*10;
+        ctx.beginPath(); ctx.arc(ex,ey,sz,0,Math.PI*2); ctx.fill();
+        ctx.restore();
+      }
+      // Growing aura
+      const ag=ctx.createRadialGradient(W*0.45,H*0.55,0,W*0.45,H*0.55,60+prog*100);
+      ag.addColorStop(0,`rgba(180,140,255,${0.25*a*prog})`);
+      ag.addColorStop(1,'rgba(0,0,0,0)');
+      ctx.fillStyle=ag; ctx.fillRect(0,0,W,H);
+
+      if(lt<3.5) sub('Day after dream day... he trained.',fadeAlpha(lt-0.5,3,0.4)*a);
+      else sub('Growing stronger. More in control.',fadeAlpha(lt-3.5,s.dur-3.5,0.4)*a);
+      letterbox(); break;
+    }
+
+    // ── SHOWDOWN: Face the shadow ─────────────────────────────────────────
+    case 'showdown':{
+      dreamBg(t,a,0.2+Math.sin(t*2)*0.1);
+      // Man on left, shadow on right
+      const tension=clamp(lt/s.dur,0,1);
+      person(W*0.22,H*0.68,1.15,'power',t);
+      drawShadow(lerp(W*1.1,W*0.68,easeOut(tension)), H*0.52, 70+Math.sin(t*2)*12, a*0.9, t);
+      // Energy crackling between them
+      if(lt>2){
+        const ca=fadeAlpha(lt-2,s.dur-2,0.4)*a;
+        for(let i=0;i<8;i++){
+          const bx=lerp(W*0.3,W*0.65,i/7)+Math.sin(t*8+i)*12;
+          const by=H*0.6+Math.sin(t*6+i*0.8)*20;
+          ctx.save(); ctx.globalAlpha=Math.max(0,ca*0.7);
+          ctx.fillStyle=`hsl(${280+i*15},90%,70%)`;
+          ctx.shadowColor=`hsl(${280+i*15},90%,70%)`; ctx.shadowBlur=10;
+          ctx.beginPath(); ctx.arc(bx,by,3,0,Math.PI*2); ctx.fill();
+          ctx.restore();
+        }
+      }
+      if(lt<3.5) sub('The shadow found him again.',fadeAlpha(lt-0.4,3.1,0.4)*a);
+      else sub('This time... he stood his ground.',fadeAlpha(lt-3.5,s.dur-3.5,0.4)*a);
+      letterbox(); break;
+    }
+
+    // ── STRUGGLE: Losing ──────────────────────────────────────────────────
+    case 'struggle':{
+      dreamBg(t,a,0.4+Math.sin(t*3)*0.15);
+      const push=clamp(lt/s.dur,0,1);
+      const px=lerp(W*0.22,W*0.12,easeIn(push));
+      // Dark waves from shadow
+      for(let i=0;i<5;i++){
+        const wr=60+i*40+lt*15;
+        const wa=Math.max(0,(1-wr/(200+lt*20))*a*0.4);
+        ctx.save(); ctx.globalAlpha=wa;
+        ctx.strokeStyle='rgba(80,0,30,0.8)'; ctx.lineWidth=3;
+        ctx.beginPath(); ctx.ellipse(W*0.7,H*0.55,wr,wr*0.5,0,0,Math.PI*2); ctx.stroke();
+        ctx.restore();
+      }
+      drawShadow(W*0.7,H*0.52,80+Math.sin(t*2)*12,a*0.9,t);
+      person(px,H*0.7,1.15,'cower',t);
+      // Stagger flash
+      if(Math.sin(t*8)>0.7){
+        ctx.fillStyle=`rgba(100,0,0,${0.15*a})`; ctx.fillRect(0,0,W,H);
+      }
+      sub('It was stronger than he imagined...',fadeAlpha(lt-0.5,s.dur-0.5,0.4)*a);
+      letterbox(); break;
+    }
+
+    // ── TURN: He fights back ──────────────────────────────────────────────
+    case 'turn':{
+      dreamBg(t,a,Math.max(0,0.3-lt*0.06));
+      const burst=clamp((lt-1)/2,0,1);
+      drawShadow(W*0.7,H*0.52,Math.max(10,80-burst*60),a*Math.max(0,1-burst),t);
+      person(W*0.3,H*0.68,1.2,'power',t);
+      // Burst of light outward
+      if(lt>1){
+        for(let i=0;i<16;i++){
+          const ang=(i/16)*Math.PI*2;
+          const rad=burst*200;
+          const ex=W*0.3+Math.cos(ang)*rad;
+          const ey=H*0.6+Math.sin(ang)*rad*0.5;
+          ctx.save(); ctx.globalAlpha=Math.max(0,a*(1-burst)*0.9);
+          ctx.fillStyle=`hsl(${270+i*15},90%,80%)`;
+          ctx.shadowColor=`hsl(${270+i*15},90%,80%)`; ctx.shadowBlur=15;
+          ctx.beginPath(); ctx.arc(ex,ey,5,0,Math.PI*2); ctx.fill();
+          ctx.restore();
+        }
+        const lg=ctx.createRadialGradient(W*0.3,H*0.6,0,W*0.3,H*0.6,burst*250);
+        lg.addColorStop(0,`rgba(200,170,255,${(1-burst)*0.5*a})`);
+        lg.addColorStop(1,'rgba(0,0,0,0)');
+        ctx.fillStyle=lg; ctx.fillRect(0,0,W,H);
+      }
+      sub('But so was he.',fadeAlpha(lt-0.5,s.dur-0.5,0.5)*a);
+      letterbox(); break;
+    }
+
+    // ── MASTER: Victory ───────────────────────────────────────────────────
+    case 'master':{
+      dreamBg(t,a);
+      person(W*0.45,H*0.68,1.2,'power',t);
+      const po=clamp(lt/s.dur,0,1);
+      const ag=ctx.createRadialGradient(W*0.45,H*0.58,0,W*0.45,H*0.58,140);
+      ag.addColorStop(0,`rgba(200,170,255,${0.4*a*po})`);
+      ag.addColorStop(1,'rgba(0,0,0,0)');
+      ctx.fillStyle=ag; ctx.fillRect(0,0,W,H);
+      for(let i=0;i<16;i++){
+        const ang=(i/16)*Math.PI*2+t*2.2;
+        const rad=100+Math.sin(t*1.5+i)*22;
+        const ex=W*0.45+Math.cos(ang)*rad;
+        const ey=H*0.52+Math.sin(ang)*rad*0.4;
+        ctx.save(); ctx.globalAlpha=Math.max(0,a*po);
+        ctx.fillStyle=`hsl(${255+i*20},92%,80%)`;
+        ctx.shadowColor=`hsl(${255+i*20},92%,80%)`; ctx.shadowBlur=20;
+        ctx.beginPath(); ctx.arc(ex,ey,5.5,0,Math.PI*2); ctx.fill();
+        ctx.restore();
+      }
+      if(lt<s.dur*0.5) sub('He mastered the dream.',fadeAlpha(lt-0.4,s.dur*0.5,0.3)*a);
+      else sub('And the dream... obeyed.',fadeAlpha(lt-s.dur*0.5,s.dur*0.5,0.4)*a);
+      letterbox(); break;
+    }
+
+    // ── REVELATION: Two worlds are one ────────────────────────────────────
+    case 'revelation':{
+      const blend=clamp((lt-1)/3,0,1);
+      // Left half: dream, right half: real — blend in the middle
+      ctx.save(); ctx.beginPath(); ctx.rect(0,0,W/2,H); ctx.clip();
+      dreamBg(t,a);
+      ctx.restore();
+      ctx.save(); ctx.beginPath(); ctx.rect(W/2,0,W/2,H); ctx.clip();
+      realBg(t,a);
+      ctx.save(); ctx.translate(W*0.26+W/2,H*0.545);
+      person(0,0,1.05,'neutral',t,true);
+      ctx.restore();
+      ctx.restore();
+      // Merge gradient in center
+      const mg2=ctx.createLinearGradient(W*0.3,0,W*0.7,0);
+      mg2.addColorStop(0,'rgba(0,0,0,0)');
+      mg2.addColorStop(0.5,`rgba(180,150,255,${blend*0.5*a})`);
+      mg2.addColorStop(1,'rgba(0,0,0,0)');
+      ctx.fillStyle=mg2; ctx.fillRect(0,0,W,H);
+      // Dividing line fades
+      ctx.save(); ctx.globalAlpha=Math.max(0,(1-blend)*a);
+      ctx.strokeStyle='rgba(180,150,255,0.6)'; ctx.lineWidth=2;
+      ctx.setLineDash([8,4]);
+      ctx.beginPath(); ctx.moveTo(W/2,0); ctx.lineTo(W/2,H); ctx.stroke();
+      ctx.restore();
+      if(lt<3) sub('The two worlds... were never separate.',fadeAlpha(lt-0.5,2.5,0.4)*a);
+      else sub('They were always one.',fadeAlpha(lt-3,s.dur-3,0.4)*a);
+      letterbox(); break;
+    }
+
+    // ── END ───────────────────────────────────────────────────────────────
+    case 'end':{
+      ctx.fillStyle='#000'; ctx.fillRect(0,0,W,H);
+      const ng2=ctx.createRadialGradient(W/2,H/2,0,W/2,H/2,300);
+      ng2.addColorStop(0,`rgba(40,15,70,${0.5*a})`);
+      ng2.addColorStop(1,'rgba(0,0,0,0)');
+      ctx.fillStyle=ng2; ctx.fillRect(0,0,W,H);
+      stars.forEach(s2=>{
+        ctx.globalAlpha=Math.max(0,a*0.7*(0.5+0.5*Math.sin(t*s2.spd+s2.ph)));
+        ctx.fillStyle='#fff';
+        ctx.beginPath(); ctx.arc(s2.x,s2.y*0.88+H*0.06,s2.r*0.65,0,Math.PI*2); ctx.fill();
+      }); ctx.globalAlpha=1;
+      bigText('BETWEEN WORLDS',H/2-20,a,'#c8aeff',52);
+      drawText('He woke up. In both worlds.',H/2+36,20,'#907090',a*0.8,false);
+      break;
+    }
+  }
+
+  // Progress bar
+  const pct=(t/TOTAL)*100;
+  document.getElementById('progress-fill').style.width=Math.min(pct,100)+'%';
+  document.getElementById('scene-label').textContent=getScene(t).s.label;
+}
+
+// ── Loop ──────────────────────────────────────────────────────────────────────
+function loop(ts){
+  if(!lastTS) lastTS=ts;
+  const dt=(ts-lastTS)/1000; lastTS=ts;
+  if(playing){
+    elapsed+=dt;
+    tickParticles(dt);
+    tickDebris(dt);
+    if(elapsed>TOTAL+0.5) elapsed=0;
+    try { render(elapsed); } catch(e){ showError(e); return; }
+    ctx.globalAlpha=1; ctx.shadowBlur=0;
+  }
+  requestAnimationFrame(loop);
+}
+
+function showError(e){
+  ctx.fillStyle='#000'; ctx.fillRect(0,0,W,H);
+  ctx.fillStyle='#ff4444'; ctx.font='bold 16px monospace'; ctx.textAlign='center';
+  ctx.fillText('Error: '+e.message,W/2,H/2-10);
+  ctx.fillStyle='#888'; ctx.font='13px monospace';
+  ctx.fillText(String(e.stack||'').split('\n')[1]||'',W/2,H/2+18);
+}
+window.onerror=(msg,src,line,col,err)=>{ showError(err||{message:msg}); return true; };
+
+requestAnimationFrame(loop);
+
+// ── Controls ──────────────────────────────────────────────────────────────────
+const btnPlay=document.getElementById('btnPlay');
+btnPlay.addEventListener('click',()=>{
+  playing=!playing;
+  btnPlay.textContent=playing?'|| Pause':'> Play';
+});
+document.getElementById('progress-bar').addEventListener('click',e=>{
+  const r=e.currentTarget.getBoundingClientRect();
+  elapsed=((e.clientX-r.left)/r.width)*TOTAL;
+});
+</script>
+</body>
+</html>
