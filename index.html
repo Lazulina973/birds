@@ -68,6 +68,7 @@
     }
     .tab-btn:hover  { background: rgba(255,255,255,.25); color: #fff }
     .tab-btn.active { background: var(--bg); color: var(--primary-dark) }
+    .tab-emoji { font-size: 1.25em; vertical-align: middle }
 
     @media (max-width: 600px) {
       .tabs { flex-wrap: wrap; padding: .75rem .5rem 0; gap: .2rem }
@@ -673,11 +674,11 @@
   <h1>BIRDS!!!!</h1>
   <p>Powered by BirdNET &middot; 6,000+ species worldwide</p>
   <div class="tabs">
-    <button class="tab-btn active" data-tab="home">🏠 Home</button>
-    <button class="tab-btn"        data-tab="browse">🎵 Browse Species</button>
-    <button class="tab-btn"        data-tab="images">📷 Images</button>
-    <button class="tab-btn"        data-tab="photo-id">🦅 ID from Photo</button>
-    <button class="tab-btn"        data-tab="identify">🔬 Identify Song</button>
+    <button class="tab-btn active" data-tab="home"><span class="tab-emoji">🏠</span> Home</button>
+    <button class="tab-btn"        data-tab="browse"><span class="tab-emoji">🎵</span> Browse Species</button>
+    <button class="tab-btn"        data-tab="images"><span class="tab-emoji">📷</span> Images</button>
+    <button class="tab-btn"        data-tab="photo-id"><span class="tab-emoji">🦅</span> ID from Photo</button>
+    <button class="tab-btn"        data-tab="identify"><span class="tab-emoji">👂</span> Identify Song</button>
   </div>
 </header>
 
